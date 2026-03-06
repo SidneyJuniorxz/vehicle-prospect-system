@@ -1,6 +1,21 @@
-import { eq } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import {
+  InsertUser,
+  users,
+  vehicleAds,
+  InsertVehicleAd,
+  leads,
+  InsertLead,
+  activityLogs,
+  InsertActivityLog,
+  notifications,
+  InsertNotification,
+  filterConfigs,
+  InsertFilterConfig,
+  scoringRules,
+  InsertScoringRule,
+} from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +104,132 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+/**
+ * Vehicle Ads queries
+ */
+export async function createVehicleAd(ad: InsertVehicleAd) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(vehicleAds).values(ad);
+  return result;
+}
+
+export async function getVehicleAdByExternalId(source: string, externalId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(vehicleAds)
+    .where(
+      and(
+        eq(vehicleAds.source, source as any),
+        eq(vehicleAds.externalId, externalId)
+      )
+    )
+    .limit(1);
+  return result[0];
+}
+
+export async function getVehicleAdsByFilters(filters: any, limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  // This will be expanded with actual filter logic
+  return db.select().from(vehicleAds).limit(limit).offset(offset);
+}
+
+export async function updateVehicleAd(id: number, updates: Partial<InsertVehicleAd>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(vehicleAds).set(updates).where(eq(vehicleAds.id, id));
+}
+
+/**
+ * Leads queries
+ */
+export async function createLead(lead: InsertLead) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(leads).values(lead);
+}
+
+export async function getLeadsByPriority(priority: string, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(leads)
+    .where(eq(leads.priority, priority as any))
+    .orderBy(desc(leads.score))
+    .limit(limit);
+}
+
+export async function updateLead(id: number, updates: Partial<InsertLead>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(leads).set(updates).where(eq(leads.id, id));
+}
+
+/**
+ * Activity logs
+ */
+export async function logActivity(log: InsertActivityLog) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(activityLogs).values(log);
+}
+
+/**
+ * Notifications
+ */
+export async function createNotification(notif: InsertNotification) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(notifications).values(notif);
+}
+
+export async function getUserNotifications(userId: number, limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.userId, userId))
+    .orderBy(desc(notifications.sentAt))
+    .limit(limit);
+}
+
+/**
+ * Filter configs
+ */
+export async function getFilterConfigs(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(filterConfigs)
+    .where(eq(filterConfigs.userId, userId));
+}
+
+export async function createFilterConfig(config: InsertFilterConfig) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(filterConfigs).values(config);
+}
+
+/**
+ * Scoring rules
+ */
+export async function getScoringRules(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(scoringRules)
+    .where(eq(scoringRules.userId, userId));
+}
+
+export async function createScoringRule(rule: InsertScoringRule) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(scoringRules).values(rule);
+}
