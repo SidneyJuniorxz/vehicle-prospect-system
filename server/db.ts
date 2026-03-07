@@ -240,3 +240,41 @@ export async function createScoringRule(rule: InsertScoringRule) {
   if (!db) throw new Error("Database not available");
   return db.insert(scoringRules).values(rule);
 }
+
+/**
+ * Activity logs
+ */
+export async function createActivityLog(log: InsertActivityLog) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(activityLogs).values(log);
+}
+
+export async function getActivityLogs(limit = 100, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(activityLogs)
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(limit)
+    .offset(offset);
+}
+
+/**
+ * Collection jobs (placeholder - will be added to schema)
+ */
+export async function createCollectionJob(job: any) {
+  // Placeholder - will be implemented when collection_jobs table is added to schema
+  return { id: 1, ...job };
+}
+
+export async function getCollectionJobs() {
+  // Placeholder - will be implemented when collection_jobs table is added to schema
+  return [];
+}
+
+export async function updateCollectionJob(jobId: number, updates: any) {
+  // Placeholder - will be implemented when collection_jobs table is added to schema
+  return { id: jobId, ...updates };
+}

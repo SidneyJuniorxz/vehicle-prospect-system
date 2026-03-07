@@ -62,3 +62,32 @@
 - [ ] Test scrapers with real data collection
 - [ ] Validate data quality and completeness
 - [x] Create comprehensive scraper documentation
+
+
+## Phase 8: HTML Parsing Implementation
+- [x] Install cheerio dependency
+- [x] Implement OLX HTML parser with cheerio
+- [x] Implement Mercado Livre HTML parser
+- [x] Implement Webmotors HTML parser
+- [x] Implement iCarros HTML parser
+- [x] Implement SóCarrão HTML parser
+- [ ] Test parsers with sample HTML
+- [ ] Validate extracted data quality
+
+## Phase 9: Scheduling System
+- [x] Create collection job schema in database (placeholder)
+- [x] Implement job scheduler service with node-cron
+- [ ] Create tRPC procedures for job management
+- [ ] Implement job execution and logging
+- [ ] Add job history tracking
+- [x] Create scheduling page in dashboard
+- [x] Add job status monitoring
+
+## Phase 10: Monitoring & Alerts
+- [x] Create scraper health check service
+- [x] Implement error rate tracking
+- [x] Implement response time monitoring
+- [x] Create alerts system
+- [x] Create monitoring dashboard page
+- [ ] Add email/notification alerts
+- [ ] Implement health check API endpoint
