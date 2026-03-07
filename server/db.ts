@@ -278,3 +278,41 @@ export async function updateCollectionJob(jobId: number, updates: any) {
   // Placeholder - will be implemented when collection_jobs table is added to schema
   return { id: jobId, ...updates };
 }
+
+/**
+ * Generic query functions for REST API
+ */
+export async function getLeads(filters: any = {}, limit = 100, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  let query = db.select().from(leads);
+  
+  if (filters.id) {
+    query = query.where(eq(leads.id, filters.id)) as any;
+  }
+  if (filters.priority) {
+    query = query.where(eq(leads.priority, filters.priority as any)) as any;
+  }
+  if (filters.status) {
+    query = query.where(eq(leads.status, filters.status as any)) as any;
+  }
+  
+  return query.orderBy(desc(leads.score)).limit(limit).offset(offset);
+}
+
+export async function getVehicleAds(filters: any = {}, limit = 100, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  let query = db.select().from(vehicleAds);
+  
+  if (filters.id) {
+    query = query.where(eq(vehicleAds.id, filters.id)) as any;
+  }
+  if (filters.source) {
+    query = query.where(eq(vehicleAds.source, filters.source as any)) as any;
+  }
+  
+  return query.limit(limit).offset(offset);
+}

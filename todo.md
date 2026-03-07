@@ -91,3 +91,54 @@
 - [x] Create monitoring dashboard page
 - [ ] Add email/notification alerts
 - [ ] Implement health check API endpoint
+
+
+## Phase 11: Hybrid Model Refactoring
+- [x] Implement flexible authentication (Manus OAuth + JWT local)
+- [x] Create auth middleware to detect deployment mode
+- [ ] Refactor database layer for multi-tenant support
+- [x] Add environment-based configuration system
+- [ ] Update frontend to support both auth modes
+
+## Phase 12: Export & Download Functionality
+- [x] Implement CSV export with custom columns
+- [x] Implement Excel export with formatting
+- [x] Implement JSON export
+- [ ] Add batch export functionality
+- [ ] Create export scheduling/history
+
+## Phase 13: REST API Implementation
+- [x] Create REST API endpoints for leads
+- [x] Create REST API endpoints for scrapers
+- [x] Create REST API endpoints for exports
+- [ ] Add API authentication (API keys)
+- [x] Create API documentation (OpenAPI/Swagger)
+
+## Phase 14: Real Data Testing
+- [ ] Test OLX scraper with real HTML
+- [ ] Test Mercado Livre scraper with real HTML
+- [ ] Test Webmotors scraper with real HTML
+- [ ] Test iCarros scraper with real HTML
+- [ ] Test SóCarrão scraper with real HTML
+- [ ] Validate data quality and completeness
+
+## Phase 15: Docker & Deployment
+- [x] Create Dockerfile for self-hosted
+- [x] Create docker-compose.yml
+- [ ] Create .dockerignore
+- [x] Add deployment documentation
+- [ ] Create setup script for self-hosted
+
+## Phase 16: Licensing System
+- [ ] Create license key generation system
+- [ ] Implement license validation
+- [ ] Add feature-based licensing (basic/pro/enterprise)
+- [ ] Create license management dashboard
+- [ ] Add trial period support
+
+## Phase 17: Documentation & Monetization
+- [ ] Create installation guide (self-hosted)
+- [ ] Create SaaS setup guide (Manus)
+- [x] Create API documentation
+- [ ] Create pricing page
+- [ ] Create user guide and tutorials

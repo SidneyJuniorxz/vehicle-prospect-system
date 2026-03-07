@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: vehicle_prospect_db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-vehicle_prospect}
+      MYSQL_USER: ${DB_USER:-prospect_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-prospect_password}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - vehicle_prospect_network
+
+  # Vehicle Prospect System Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vehicle_prospect_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DEPLOYMENT_MODE: self-hosted
+      DATABASE_URL: mysql://${DB_USER:-prospect_user}:${DB_PASSWORD:-prospect_password}@db:3306/${DB_NAME:-vehicle_prospect}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      PORT: 3000
+      # Optional: Manus OAuth (if running in hybrid mode with Manus)
+      VITE_APP_ID: ${VITE_APP_ID:-}
+      OAUTH_SERVER_URL: ${OAUTH_SERVER_URL:-}
+      VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL:-}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vehicle_prospect_network
+    restart: unless-stopped
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  vehicle_prospect_network:
+    driver: bridge
