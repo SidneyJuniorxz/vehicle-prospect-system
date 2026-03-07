@@ -31,5 +31,3 @@ databases:
     databaseName: vehicle_prospect
     user: prospect_user
     plan: free
-    postgreSQL:
-      version: 15
