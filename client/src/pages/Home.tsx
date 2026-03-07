@@ -32,11 +32,35 @@ export default function Home() {
               <p className="text-xl text-gray-600 mb-8">
                 Monitore anúncios de veículos, identifique oportunidades e gerencie seus leads com inteligência
               </p>
-              <a href={getLoginUrl()}>
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
-                  Entrar com Manus
+              
+              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+                <Button 
+                  size="lg" 
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => navigate("/login")}
+                >
+                  Entrar com Usuário/Senha
                 </Button>
-              </a>
+                <Button 
+                  size="lg" 
+                  variant="outline"
+                  onClick={() => navigate("/register")}
+                >
+                  Criar Conta
+                </Button>
+              </div>
+
+              {/* Manus OAuth button - only show if configured */}
+              {import.meta.env.VITE_OAUTH_PORTAL_URL && (
+                <div className="mb-8">
+                  <p className="text-gray-600 mb-4">ou</p>
+                  <a href={getLoginUrl()}>
+                    <Button size="lg" variant="secondary">
+                      Entrar com Manus
+                    </Button>
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="grid md:grid-cols-2 gap-6 mb-12">
@@ -49,7 +73,7 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600">
-                    Colete anúncios de múltiplas fontes (OLX, Mercado Livre) automaticamente com agendamento configurável.
+                    Colete anúncios de múltiplas fontes (OLX, Mercado Livre, Webmotors, iCarros, SóCarrão) automaticamente com agendamento configurável.
                   </p>
                 </CardContent>
               </Card>
