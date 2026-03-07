@@ -137,6 +137,13 @@ export async function getVehicleAdsByFilters(filters: any, limit = 50, offset = 
   return db.select().from(vehicleAds).limit(limit).offset(offset);
 }
 
+export async function getVehicleAdByHash(hash: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(vehicleAds).where(eq(vehicleAds.hash, hash)).limit(1);
+  return result[0] || undefined;
+}
+
 export async function updateVehicleAd(id: number, updates: Partial<InsertVehicleAd>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

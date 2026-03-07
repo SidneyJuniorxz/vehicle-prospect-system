@@ -46,3 +46,19 @@
 - [ ] Create user guide
 - [ ] Create configuration guide
 - [ ] Prepare for production deployment
+
+
+## Phase 7: Scraper Expansion - Multiple Sources
+- [x] Create extensible scraper architecture with source plugins
+- [x] Implement Webmotors scraper
+- [x] Implement iCarros scraper
+- [x] Implement SoCarrao scraper
+- [x] Implement OLX scraper
+- [x] Implement Mercado Livre scraper
+- [x] Add ethical scraping: delays, user-agent rotation, robots.txt compliance
+- [x] Create data source management interface (add/edit/remove sources)
+- [ ] Implement proxy rotation (optional)
+- [ ] Add scraper health monitoring and error handling
+- [ ] Test scrapers with real data collection
+- [ ] Validate data quality and completeness
+- [x] Create comprehensive scraper documentation
