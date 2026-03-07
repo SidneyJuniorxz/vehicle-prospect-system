@@ -15,6 +15,8 @@ import {
   logActivity,
 } from "./db";
 import { CollectionService } from "./services/collectionService";
+import { getLocalAuthService } from "./services/localAuthService";
+import { generateToken } from "./_core/authMiddleware";
 import { eq, desc } from "drizzle-orm";
 import { leads, vehicleAds, notifications } from "../drizzle/schema";
 
@@ -29,6 +31,57 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+    localLogin: publicProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          password: z.string().min(6),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const authService = getLocalAuthService();
+        const result = await authService.login(input.email, input.password);
+
+        if (result.success && result.user) {
+          const token = await generateToken({
+            id: result.user.id,
+            openId: `local_${result.user.email}`,
+            email: result.user.email,
+            name: result.user.name,
+            role: result.user.role as "admin" | "analyst" | "viewer",
+          });
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        }
+
+        return result;
+      }),
+    localRegister: publicProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          password: z.string().min(6),
+          name: z.string().min(2),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const authService = getLocalAuthService();
+        const result = await authService.register(input.email, input.password, input.name);
+
+        if (result.success && result.user) {
+          const token = await generateToken({
+            id: result.user.id,
+            openId: `local_${result.user.email}`,
+            email: result.user.email,
+            name: result.user.name,
+            role: result.user.role as "admin" | "analyst" | "viewer",
+          });
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+        }
+
+        return result;
+      }),
   }),
 
   leads: router({

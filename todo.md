@@ -142,3 +142,32 @@
 - [x] Create API documentation
 - [ ] Create pricing page
 - [ ] Create user guide and tutorials
+
+
+## Phase 18: Local Authentication System
+- [x] Create Login page with email/password form
+- [x] Create Register page with validation
+- [x] Implement password hashing with bcrypt
+- [x] Create tRPC endpoints for login/register
+- [x] Implement JWT token generation and validation
+- [x] Add session management with cookies
+- [ ] Create password recovery page
+- [ ] Implement email verification (optional)
+- [ ] Create user profile/settings page
+- [ ] Add password change functionality
+
+## Phase 19: User Management (Admin)
+- [ ] Create admin users list page
+- [ ] Implement user creation/editing by admin
+- [ ] Add role-based access control (admin/analyst/viewer)
+- [ ] Create user deactivation/deletion
+- [ ] Add user activity logs
+- [ ] Implement permission checks in frontend
+
+## Phase 20: Testing & Security
+- [ ] Write tests for authentication flows
+- [ ] Test password hashing and validation
+- [ ] Test JWT token expiration
+- [ ] Test session management
+- [ ] Verify CORS and security headers
+- [ ] Test rate limiting on login attempts
