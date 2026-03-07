@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: vehicle-prospect-system
+    env: node
+    plan: free
+    buildCommand: npm install -g pnpm && pnpm install && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vehicle-prospect-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: VITE_APP_ID
+        sync: false
+      - key: VITE_APP_TITLE
+        value: "Vehicle Prospect System"
+      - key: VITE_APP_LOGO
+        value: "https://via.placeholder.com/200x200?text=VPS"
+      - key: VITE_FRONTEND_FORGE_API_KEY
+        sync: false
+      - key: VITE_FRONTEND_FORGE_API_URL
+        sync: false
+
+databases:
+  - name: vehicle-prospect-db
+    databaseName: vehicle_prospect
+    user: prospect_user
+    plan: free
+    postgreSQL:
+      version: 15
