@@ -13,8 +13,40 @@ export class WebmotorsScraper extends BaseScraper {
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
       const searchUrl = this.buildSearchUrl(criteria);
-      const html = await this.fetchWithRetry(searchUrl);
-      const ads = this.parseAds(html);
+      const html = await this.fetchWithRetry(searchUrl, { visibleBrowser: criteria.visibleBrowser });
+      let ads = this.parseAds(html, criteria);
+
+      if (criteria.deepScrape && ads.length > 0) {
+        console.log(`[Webmotors] Deep scraping ${ads.length} ads for contacts...`);
+        for (let i = 0; i < ads.length; i++) {
+          const ad = ads[i];
+          try {
+            console.log(`[Webmotors] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
+            const contactInfo = await this.runInBrowser(ad.url, async (page) => {
+              await page.waitForLoadState('domcontentloaded');
+
+              // Try to find and click the contact button on Webmotors
+              const btnRegex = /(Ver telefone|WhatsApp|Mensagem)/i;
+              const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
+                || await page.getByText(btnRegex).first().catch(() => null);
+
+              if (button) {
+                await button.click().catch((e: any) => console.log('Button click err:', e.message));
+                await this.humanLikeDelay(1500, 3000); // Wait for number/modal to reveal
+              }
+
+              const pageHtml = await page.content();
+              return BaseScraper.extractPhoneNumbers(pageHtml);
+            }, { visibleBrowser: criteria.visibleBrowser });
+
+            if (contactInfo) {
+              ad.contactInfo = contactInfo;
+            }
+          } catch (e) {
+            console.error(`[Webmotors] Failed to deep scrape ${ad.url}`);
+          }
+        }
+      }
 
       console.log(`[Webmotors] Found ${ads.length} ads`);
       return ads;
@@ -25,92 +57,116 @@ export class WebmotorsScraper extends BaseScraper {
   }
 
   private buildSearchUrl(criteria: Record<string, any>): string {
+    // Brand and Model based friendly URL
+    if (criteria.brand && criteria.model) {
+      const brand = criteria.brand.toLowerCase().replace(/\s+/g, '-');
+      const model = criteria.model.toLowerCase().replace(/\s+/g, '-');
+      const state = criteria.state ? criteria.state.toLowerCase() : "";
+      return `https://www.webmotors.com.br/carros-venda/${brand}/${model}${state ? `/sp` : ""}`;
+    }
+
     const params = new URLSearchParams();
+    if (criteria.state) params.append("estado", criteria.state);
+    if (criteria.minPrice) params.append("precoMinimo", criteria.minPrice);
+    if (criteria.maxPrice) params.append("precoMaximo", criteria.maxPrice);
+    if (criteria.minYear) params.append("anoMinimo", criteria.minYear);
+    if (criteria.maxYear) params.append("anoMaximo", criteria.maxYear);
 
-    if (criteria.state) {
-      params.append("estado", criteria.state);
-    }
-    if (criteria.minPrice) {
-      params.append("precoMinimo", criteria.minPrice);
-    }
-    if (criteria.maxPrice) {
-      params.append("precoMaximo", criteria.maxPrice);
-    }
-    if (criteria.minYear) {
-      params.append("anoMinimo", criteria.minYear);
-    }
-    if (criteria.maxYear) {
-      params.append("anoMaximo", criteria.maxYear);
+    const queryParts = [];
+    if (criteria.brand) queryParts.push(criteria.brand);
+    if (criteria.model) queryParts.push(criteria.model);
+    if (queryParts.length > 0) {
+      params.append("busca", queryParts.join(" "));
     }
 
-    return `/busca?${params.toString()}`;
+    return `${this.config.baseUrl}/busca?${params.toString()}`;
   }
 
-  private parseAds(html: string): ScrapedVehicleAd[] {
+  private parseAds(html: string, criteria: Record<string, any>): ScrapedVehicleAd[] {
     const ads: ScrapedVehicleAd[] = [];
 
     try {
       const $ = cheerio.load(html);
 
-      // Webmotors item structure
-      $("div.car-item, article.vehicle-card, div[data-testid='vehicle-item']").each(
+      // Webmotors dynamic hash classes traversal
+      $("div[class*='_Card_'], div[class*='Card_'], .ContainerCard").each(
         (_, element) => {
           try {
             const $element = $(element);
 
             // Extract ad link
-            const adLink = $element.find("a[href*='/veiculo/']").first();
-            const url = adLink.attr("href") || "";
+            const adLink = $element.find("a[href*='/comprar/']").first();
+            const href = adLink.attr("href") || "";
+            const url = href.startsWith('http') ? href : `${this.config.baseUrl}${href}`;
             const externalId = this.extractIdFromUrl(url);
 
             if (!externalId) return;
 
             // Extract title
-            const title = $element.find("h2, .vehicle-title, .car-title").text() || "";
+            const titleText = $element.find("h2, h3, .TitleCard").text() || adLink.text() || "";
+            const title = titleText.replace("Ver parcelas", "").trim();
 
-            // Extract price
-            const priceText = $element.find(".price, .vehicle-price, .car-price").text() || "";
+            // Extract price using string search
+            const priceText = $element.find('*:contains("R$")').last().text() || "";
             const price = this.extractPrice(priceText);
 
-            // Extract location
-            const locationText = $element.find(".location, .city").text() || "";
-            const { city, state } = this.parseLocation(locationText);
+            // Extract year (typically 2020/2021)
+            const infoText = $element.text();
+            let yearInfos = { min: 0, max: 0 };
+            const yearMatch = infoText.match(/(19|20)\d{2}\s*\/\s*(19|20)\d{2}/);
+            if (yearMatch) {
+              const parts = yearMatch[0].split('/');
+              yearInfos = { min: parseInt(parts[0].trim(), 10), max: 0 };
+            } else {
+              const singleYearMatch = infoText.match(/\b(201\d|202\d)\b/);
+              if (singleYearMatch) {
+                yearInfos = { min: parseInt(singleYearMatch[1], 10), max: 0 };
+              }
+            }
 
             // Extract mileage
-            const mileageText = $element.find(".mileage, .km, .quilometragem").text() || "";
-            const mileage = this.extractMileage(mileageText);
+            const mileageText = $element.find('*:contains("km")').last().text() || "";
+            const mileageString = mileageText.replace(/\D/g, "");
+            const mileage = mileageString ? parseInt(mileageString, 10) : 0;
 
-            // Extract year
-            const yearText = $element.find(".year, .ano").text() || "";
-            const year = this.extractYear(yearText);
+            const city = "Sem local";
+            const state = "";
 
-            // Extract brand and model
-            const { brand, model } = this.extractBrandModel(title);
+            // Photos
+            let photoUrls: string[] | undefined;
+            if (criteria.includeImages) {
+              photoUrls = [];
+              $element.find("img").each((_, imgEl) => {
+                const src = $(imgEl).attr("src") || $(imgEl).attr("data-src") || $(imgEl).attr("srcset");
+                if (src && typeof src === 'string') {
+                  const cleanSrc = src.split(' ')[0];
+                  if (cleanSrc.startsWith('http')) {
+                    photoUrls!.push(cleanSrc);
+                  }
+                }
+              });
+            }
 
-            // Extract seller type
-            const sellerType = this.extractSellerType($element);
-
-            // Extract photo count
-            const photoCount = $element.find("img").length || 0;
-
-            // Extract description
-            const description = $element.find(".description, .details").text() || "";
+            // Extract real brand and model from title
+            const { brand: realBrand, model: realModel } = BaseScraper.extractBrandAndModel(title);
 
             const ad: ScrapedVehicleAd = {
               externalId,
               source: this.config.source,
-              url: url.startsWith("http") ? url : `${this.config.baseUrl}${url}`,
+              url,
               title: title.trim(),
-              brand,
-              model,
-              year,
+              brand: realBrand || criteria.brand,
+              model: realModel || criteria.model,
+              color: criteria.color,
+              year: yearInfos.min || undefined,
               mileage,
               price,
-              city,
-              state,
-              sellerType,
-              description: description.trim(),
-              photoCount,
+              city: city || criteria.city,
+              state: state || criteria.state,
+              sellerType: "dealer",
+              description: title,
+              photoCount: photoUrls ? photoUrls.length : 0,
+              photoUrls,
             };
 
             ads.push(ad);
@@ -128,95 +184,17 @@ export class WebmotorsScraper extends BaseScraper {
   }
 
   private extractIdFromUrl(url: string): string {
-    // Extract ID from Webmotors URL format: /veiculo/{id}
-    const match = url.match(/\/veiculo\/(\d+)/);
+    const match = url.match(/\/(\d+)(?:[?#]|$)/);
     return match ? match[1] : "";
   }
 
-  private extractPrice(priceText: string): string {
+  private extractPrice(priceText: string): number | undefined {
     const match = priceText.match(/[\d.]+(?:,\d+)?/);
     if (match) {
-      return match[0].replace(/\./g, "").replace(",", "");
+      const p = match[0].replace(/\./g, "").replace(",", ".");
+      const num = parseFloat(p);
+      return !isNaN(num) ? num : undefined;
     }
-    return "";
-  }
-
-  private parseLocation(locationText: string): { city: string; state: string } {
-    const parts = locationText.split(",").map((p) => p.trim());
-    return {
-      city: parts[0] || "",
-      state: parts[1] || "",
-    };
-  }
-
-  private extractMileage(mileageText: string): number | undefined {
-    const match = mileageText.match(/(\d+)\s*(?:km|quilômetro)/i);
-    return match ? parseInt(match[1], 10) : undefined;
-  }
-
-  private extractYear(yearText: string): number | undefined {
-    const match = yearText.match(/\b(19|20)\d{2}\b/);
-    return match ? parseInt(match[0], 10) : undefined;
-  }
-
-  private extractBrandModel(title: string): { brand?: string; model?: string } {
-    const brands = [
-      "Fiat",
-      "Chevrolet",
-      "Ford",
-      "Volkswagen",
-      "Hyundai",
-      "Kia",
-      "Toyota",
-      "Honda",
-      "Nissan",
-      "Renault",
-      "Peugeot",
-      "Citroën",
-      "BMW",
-      "Audi",
-      "Mercedes",
-      "Jeep",
-      "Mitsubishi",
-      "Suzuki",
-    ];
-
-    const titleLower = title.toLowerCase();
-    let brand: string | undefined;
-
-    for (const b of brands) {
-      if (titleLower.includes(b.toLowerCase())) {
-        brand = b;
-        break;
-      }
-    }
-
-    let model: string | undefined;
-    if (brand) {
-      const parts = title.split(/\s+/);
-      const brandIndex = parts.findIndex(
-        (p) => p.toLowerCase() === brand!.toLowerCase()
-      );
-      if (brandIndex !== -1 && brandIndex + 1 < parts.length) {
-        model = parts[brandIndex + 1];
-      }
-    }
-
-    return { brand, model };
-  }
-
-  private extractSellerType(
-    $element: any
-  ): "individual" | "dealer" | "reseller" | undefined {
-    const sellerText = $element.find(".seller-type, .badge").text().toLowerCase();
-
-    if (sellerText.includes("loja") || sellerText.includes("concession")) {
-      return "dealer";
-    }
-    if (sellerText.includes("revenda")) {
-      return "reseller";
-    }
-
-    return "individual";
+    return undefined;
   }
 }

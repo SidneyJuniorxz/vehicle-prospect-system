@@ -14,7 +14,7 @@ export class iCarrosScraper extends BaseScraper {
     try {
       const searchUrl = this.buildSearchUrl(criteria);
       const html = await this.fetchWithRetry(searchUrl);
-      const ads = this.parseAds(html);
+      const ads = this.parseAds(html, criteria);
 
       console.log(`[iCarros] Found ${ads.length} ads`);
       return ads;
@@ -40,10 +40,21 @@ export class iCarrosScraper extends BaseScraper {
       params.append("anoMin", criteria.minYear);
     }
 
-    return `/busca?${params.toString()}`;
+    // Add search query for brand and model
+    const queryParts = [];
+    if (criteria.brand) queryParts.push(criteria.brand);
+    if (criteria.model) queryParts.push(criteria.model);
+    if (queryParts.length > 0) {
+      // iCarros often uses 'make' and 'model' params but fallback to general search if needed
+      // Here we append to a generic search if the site supports it, or just ensure they are in params
+      params.append("marca", criteria.brand || "");
+      params.append("modelo", criteria.model || "");
+    }
+
+    return `${this.config.baseUrl}/busca?${params.toString()}`;
   }
 
-  private parseAds(html: string): ScrapedVehicleAd[] {
+  private parseAds(html: string, criteria: Record<string, any>): ScrapedVehicleAd[] {
     const ads: ScrapedVehicleAd[] = [];
 
     try {
@@ -81,8 +92,8 @@ export class iCarrosScraper extends BaseScraper {
             const yearText = $element.find(".year, .ano").text() || "";
             const year = this.extractYear(yearText);
 
-            // Extract brand and model
-            const { brand, model } = this.extractBrandModel(title);
+            // Extract real brand and model from title
+            const { brand: extractedBrand, model: extractedModel } = BaseScraper.extractBrandAndModel(title);
 
             // Extract seller type
             const sellerType = this.extractSellerType($element);
@@ -98,8 +109,8 @@ export class iCarrosScraper extends BaseScraper {
               source: this.config.source,
               url: url.startsWith("http") ? url : `${this.config.baseUrl}${url}`,
               title: title.trim(),
-              brand,
-              model,
+              brand: extractedBrand || criteria.brand,
+              model: extractedModel || criteria.model,
               year,
               mileage,
               price,
@@ -130,12 +141,14 @@ export class iCarrosScraper extends BaseScraper {
     return match ? match[1] : "";
   }
 
-  private extractPrice(priceText: string): string {
+  private extractPrice(priceText: string): number | undefined {
     const match = priceText.match(/[\d.]+(?:,\d+)?/);
     if (match) {
-      return match[0].replace(/\./g, "").replace(",", "");
+      const p = match[0].replace(/\./g, "").replace(",", ".");
+      const num = parseFloat(p);
+      return !isNaN(num) ? num : undefined;
     }
-    return "";
+    return undefined;
   }
 
   private parseLocation(locationText: string): { city: string; state: string } {

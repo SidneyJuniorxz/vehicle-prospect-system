@@ -13,8 +13,40 @@ export class OlxScraper extends BaseScraper {
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
       const searchUrl = this.buildSearchUrl(criteria);
-      const html = await this.fetchWithRetry(searchUrl);
-      const ads = this.parseAds(html);
+      const html = await this.fetchWithRetry(searchUrl, { visibleBrowser: criteria.visibleBrowser });
+      let ads = this.parseAds(html, criteria);
+
+      if (criteria.deepScrape && ads.length > 0) {
+        console.log(`[OLX] Deep scraping ${ads.length} ads for contacts...`);
+        for (let i = 0; i < ads.length; i++) {
+          const ad = ads[i];
+          try {
+            console.log(`[OLX] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
+            const contactInfo = await this.runInBrowser(ad.url, async (page) => {
+              await page.waitForLoadState('domcontentloaded');
+
+              // Try to find and click the contact button
+              const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone)/i;
+              const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
+                || await page.getByText(btnRegex).first().catch(() => null);
+
+              if (button) {
+                await button.click().catch((e: any) => console.log('Button click err:', e.message));
+                await this.humanLikeDelay(1500, 3000); // Wait for the number to reveal
+              }
+
+              const pageHtml = await page.content();
+              return BaseScraper.extractPhoneNumbers(pageHtml);
+            }, { visibleBrowser: criteria.visibleBrowser });
+
+            if (contactInfo) {
+              ad.contactInfo = contactInfo;
+            }
+          } catch (e) {
+            console.error(`[OLX] Failed to deep scrape ${ad.url}`);
+          }
+        }
+      }
 
       console.log(`[OLX] Found ${ads.length} ads`);
       return ads;
@@ -55,85 +87,118 @@ export class OlxScraper extends BaseScraper {
       params.append("maxMileage", criteria.maxMileage);
     }
 
+    if (criteria.brand || criteria.model || criteria.color) {
+      const parts = [];
+      if (criteria.brand) parts.push(criteria.brand);
+      if (criteria.model) parts.push(criteria.model);
+      if (criteria.color) parts.push(criteria.color);
+
+      // If brand and model are present, make sure they are combined in 'q' for better precision
+      params.append("q", parts.join(" "));
+    }
+
     const queryString = params.toString();
-    return queryString ? `${url}?${queryString}` : url;
+    const finalPath = queryString ? `${url}?${queryString}` : url;
+    return `${this.config.baseUrl}${finalPath}`;
   }
 
-  private parseAds(html: string): ScrapedVehicleAd[] {
+  private parseAds(html: string, criteria: Record<string, any>): ScrapedVehicleAd[] {
     const ads: ScrapedVehicleAd[] = [];
 
     try {
       const $ = cheerio.load(html);
 
-      // OLX ad list structure (typical)
-      // Adjust selectors based on actual OLX HTML structure
-      $("div[data-testid='ad-item'], li.ad, article.ad").each((_, element) => {
+      // OLX ad list structure (dynamic selectors)
+      $("a.olx-adcard__link, a[data-testid='adcard-link']").each((_, element) => {
         try {
           const $element = $(element);
 
-          // Extract ad ID from data attributes or URL
-          const adLink = $element.find("a[href*='/v/']").first();
-          const url = adLink.attr("href") || "";
+          // Extract ad ID from URL
+          const url = $element.attr("href") || "";
           const externalId = this.extractIdFromUrl(url);
 
           if (!externalId) return; // Skip if can't extract ID
 
           // Extract title
-          const title =
-            $element.find("h2, .ad-title, [data-testid='ad-title']").text() ||
-            adLink.attr("title") ||
-            "";
+          const title = $element.find("h2").text() || $element.attr("title") || "";
+
+          // The text is inside the parent card wrapper
+          const cardParent = $element.closest('.olx-adcard__topbody, section, li');
+          const fullText = cardParent.text() || $element.text();
 
           // Extract price
-          const priceText =
-            $element.find(".price, [data-testid='ad-price'], .ad-price").text() || "";
+          let priceText = $element.find('.olx-adcard__price, [aria-label*="Preço"]').text() || "";
+          if (!priceText) priceText = cardParent.find('h3').text() || "";
+          if (!priceText) priceText = cardParent.find('*:contains("R$")').last().text() || "";
           const price = this.extractPrice(priceText);
 
-          // Extract location
-          const locationText =
-            $element.find(".location, [data-testid='ad-location']").text() || "";
+          // Extract location (naive matching for now)
+          let locationText = $element.find('.olx-adcard__location, .olx-adcard__location-line-1, p[aria-label*="Localização"]').text() || "";
+          if (!locationText) locationText = cardParent.find('[aria-label*="Localização"]').attr('aria-label') || "";
           const { city, state } = this.parseLocation(locationText);
 
           // Extract mileage
-          const mileageText = $element.find(".mileage, .km").text() || "";
+          const mileageNode = cardParent.find('[aria-label*="quilômetros"]');
+          let mileageText = $element.find('[aria-label*="quilômetros"]').attr('aria-label') || $element.find('.olx-adcard__mileage').text() || "";
+          if (!mileageText) mileageText = mileageNode.attr('aria-label') || cardParent.find('*:contains(" km")').last().text() || fullText;
           const mileage = this.extractMileage(mileageText);
 
           // Extract year
-          const yearText = $element.find(".year, .ad-year").text() || "";
-          const year = this.extractYear(yearText);
-
-          // Extract brand and model from title
-          const { brand, model } = this.extractBrandModel(title);
+          const yearNode = cardParent.find('[aria-label*="Ano"]');
+          let yearText = $element.find('[aria-label*="Ano"]').attr('aria-label') || $element.find('.olx-adcard__year').text() || "";
+          if (!yearText) yearText = yearNode.attr('aria-label') || fullText;
+          let year = 0;
+          const yearMatch = yearText.match(/\b(19|20)\d{2}\b/);
+          if (yearMatch) year = parseInt(yearMatch[0], 10);
 
           // Extract seller type
           const sellerType = this.extractSellerType($element);
 
-          // Extract photo count
+          // Extract photo count and URLs
           const photoCount = $element.find("img").length || 0;
+
+          let photoUrls: string[] | undefined;
+          if (criteria.includeImages) {
+            photoUrls = [];
+            $element.find("img").each((_, imgEl) => {
+              const src = $(imgEl).attr("src") || $(imgEl).attr("data-src") || $(imgEl).attr("srcset");
+              if (src && typeof src === 'string') {
+                const cleanSrc = src.split(' ')[0];
+                if (cleanSrc.startsWith('http')) {
+                  photoUrls!.push(cleanSrc);
+                }
+              }
+            });
+          }
 
           // Extract description/details
           const description =
-            $element.find(".description, .ad-description").text() || "";
+            $element.find(".olx-adcard__description, .description, .ad-description").text() || "";
 
           // Extract posted date
           const dateText = $element.find(".date, [data-testid='ad-date']").text() || "";
           const adPostedAt = this.parseDate(dateText);
+
+          // Extract real brand and model from title
+          const { brand: realBrand, model: realModel } = BaseScraper.extractBrandAndModel(title);
 
           const ad: ScrapedVehicleAd = {
             externalId,
             source: this.config.source,
             url: url.startsWith("http") ? url : `${this.config.baseUrl}${url}`,
             title: title.trim(),
-            brand,
-            model,
+            brand: realBrand || criteria.brand,
+            model: realModel || criteria.model,
+            color: criteria.color,
             year,
             mileage,
             price,
-            city,
-            state,
+            city: city || criteria.city,
+            state: state || criteria.state,
             sellerType,
             description: description.trim(),
-            photoCount,
+            photoCount: photoUrls ? photoUrls.length : 0,
+            photoUrls,
             adPostedAt,
           };
 
@@ -151,18 +216,19 @@ export class OlxScraper extends BaseScraper {
   }
 
   private extractIdFromUrl(url: string): string {
-    // Extract ID from OLX URL format: /v/carros/.../{id}
-    const match = url.match(/\/(\d+)(?:\?|$|\/)/);
+    // Extract ID from OLX URL: usually a long number at the end after a hyphen or slash
+    const match = url.match(/[/-](\d+)(?:[?#]|$)/);
     return match ? match[1] : "";
   }
 
-  private extractPrice(priceText: string): string {
+  private extractPrice(priceText: string): number | undefined {
     // Extract price from text like "R$ 35.000" or "35000"
     const match = priceText.match(/[\d.]+/g);
     if (match) {
-      return match.join("").replace(/\./g, "");
+      const parsed = parseInt(match.join("").replace(/\./g, ""), 10);
+      return isNaN(parsed) ? undefined : parsed;
     }
-    return "";
+    return undefined;
   }
 
   private parseLocation(locationText: string): { city: string; state: string } {

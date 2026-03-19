@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from "express";
 import { jwtVerify } from "jose";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
-const DEPLOYMENT_MODE = process.env.DEPLOYMENT_MODE || "manus"; // "manus" or "self-hosted"
 
 export interface AuthUser {
   id: number;
@@ -17,62 +16,46 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
-      deploymentMode: "manus" | "self-hosted";
     }
   }
 }
 
 /**
- * Middleware to handle both Manus OAuth and self-hosted JWT authentication
+ * Middleware to handle self-hosted JWT authentication
  */
 export async function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  req.deploymentMode = DEPLOYMENT_MODE as "manus" | "self-hosted";
 
-  // If Manus deployment, use existing OAuth context
-  if (DEPLOYMENT_MODE === "manus") {
-    // Manus OAuth is already handled by framework
-    // User is available in context from OAuth callback
-    next();
-    return;
-  }
+  const token = extractToken(req);
 
-  // Self-hosted: Check for JWT token
-  if (DEPLOYMENT_MODE === "self-hosted") {
-    const token = extractToken(req);
-
-    if (!token) {
-      // Allow unauthenticated access to public endpoints
-      if (isPublicEndpoint(req.path)) {
-        next();
-        return;
-      }
-
-      res.status(401).json({ error: "Unauthorized" });
+  if (!token) {
+    if (isPublicEndpoint(req.path)) {
+      next();
       return;
     }
-
-    try {
-      const secret = new TextEncoder().encode(JWT_SECRET);
-      const verified = await jwtVerify(token, secret);
-      req.user = verified.payload as AuthUser;
-      next();
-    } catch (error) {
-      res.status(401).json({ error: "Invalid token" });
-    }
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  next();
+  try {
+    const secret = new TextEncoder().encode(JWT_SECRET);
+    const verified = await jwtVerify(token, secret);
+    req.user = verified.payload as AuthUser;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: "Invalid token" });
+  }
 }
 
 /**
  * Extract JWT token from request
  */
-function extractToken(req: Request): string | null {
+import { COOKIE_NAME } from "@shared/const";
+
+export function extractToken(req: Request): string | null {
   // Check Authorization header
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
@@ -80,7 +63,7 @@ function extractToken(req: Request): string | null {
   }
 
   // Check cookie
-  const cookie = req.cookies?.auth_token;
+  const cookie = req.cookies?.[COOKIE_NAME] || req.cookies?.auth_token;
   if (cookie) {
     return cookie;
   }

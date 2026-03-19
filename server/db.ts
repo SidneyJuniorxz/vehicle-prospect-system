@@ -1,30 +1,40 @@
 import { eq, and, desc } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
 import {
-  InsertUser,
   users,
   vehicleAds,
-  InsertVehicleAd,
   leads,
-  InsertLead,
   activityLogs,
-  InsertActivityLog,
   notifications,
-  InsertNotification,
   filterConfigs,
-  InsertFilterConfig,
   scoringRules,
+  collectionJobs,
+  InsertUser,
+  InsertVehicleAd,
+  InsertLead,
+  InsertActivityLog,
+  InsertNotification,
+  InsertFilterConfig,
   InsertScoringRule,
+  InsertCollectionJob,
+  whatsappTemplates,
+  InsertWhatsappTemplate,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
+let _pool: pg.Pool | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _pool = new pg.Pool({
+        connectionString: process.env.DATABASE_URL,
+      });
+      _db = drizzle(_pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -83,7 +93,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -242,6 +253,35 @@ export async function createScoringRule(rule: InsertScoringRule) {
 }
 
 /**
+ * WhatsApp Templates
+ */
+export async function getWhatsappTemplates(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(whatsappTemplates)
+    .where(eq(whatsappTemplates.userId, userId));
+}
+
+export async function upsertWhatsappTemplate(template: Required<Pick<InsertWhatsappTemplate, 'userId' | 'status' | 'message'>>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select()
+    .from(whatsappTemplates)
+    .where(and(eq(whatsappTemplates.userId, template.userId), eq(whatsappTemplates.status, template.status)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    return db.update(whatsappTemplates).set({ message: template.message, updatedAt: new Date() }).where(eq(whatsappTemplates.id, existing[0].id));
+  } else {
+    return db.insert(whatsappTemplates).values(template);
+  }
+}
+
+/**
  * Activity logs
  */
 export async function createActivityLog(log: InsertActivityLog) {
@@ -262,21 +302,38 @@ export async function getActivityLogs(limit = 100, offset = 0) {
 }
 
 /**
- * Collection jobs (placeholder - will be added to schema)
+ * Collection jobs
  */
-export async function createCollectionJob(job: any) {
-  // Placeholder - will be implemented when collection_jobs table is added to schema
-  return { id: 1, ...job };
+export async function createCollectionJob(job: InsertCollectionJob) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(collectionJobs).values(job).returning();
 }
 
-export async function getCollectionJobs() {
-  // Placeholder - will be implemented when collection_jobs table is added to schema
-  return [];
+export async function getCollectionJob(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(collectionJobs).where(eq(collectionJobs.id, id)).limit(1);
+  return result[0];
 }
 
-export async function updateCollectionJob(jobId: number, updates: any) {
-  // Placeholder - will be implemented when collection_jobs table is added to schema
-  return { id: jobId, ...updates };
+export async function updateCollectionJob(jobId: number, updates: Partial<InsertCollectionJob>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(collectionJobs).set(updates).where(eq(collectionJobs.id, jobId)).returning();
+}
+
+export async function getCollectionJobs(userId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  let query = db.select().from(collectionJobs);
+
+  if (userId) {
+    query = query.where(eq(collectionJobs.userId, userId)) as any;
+  }
+
+  return query.orderBy(desc(collectionJobs.createdAt));
 }
 
 /**
@@ -285,9 +342,9 @@ export async function updateCollectionJob(jobId: number, updates: any) {
 export async function getLeads(filters: any = {}, limit = 100, offset = 0) {
   const db = await getDb();
   if (!db) return [];
-  
+
   let query = db.select().from(leads);
-  
+
   if (filters.id) {
     query = query.where(eq(leads.id, filters.id)) as any;
   }
@@ -297,22 +354,22 @@ export async function getLeads(filters: any = {}, limit = 100, offset = 0) {
   if (filters.status) {
     query = query.where(eq(leads.status, filters.status as any)) as any;
   }
-  
+
   return query.orderBy(desc(leads.score)).limit(limit).offset(offset);
 }
 
 export async function getVehicleAds(filters: any = {}, limit = 100, offset = 0) {
   const db = await getDb();
   if (!db) return [];
-  
+
   let query = db.select().from(vehicleAds);
-  
+
   if (filters.id) {
     query = query.where(eq(vehicleAds.id, filters.id)) as any;
   }
   if (filters.source) {
     query = query.where(eq(vehicleAds.source, filters.source as any)) as any;
   }
-  
+
   return query.limit(limit).offset(offset);
 }

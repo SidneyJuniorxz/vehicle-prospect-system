@@ -30,19 +30,19 @@ export default function Home() {
                 Vehicle Prospect System
               </h1>
               <p className="text-xl text-gray-600 mb-8">
-                Monitore anúncios de veículos, identifique oportunidades e gerencie seus leads com inteligência
+                Monitore anúncios de veículos, identifique oportunidades e gerencie suas prospecções com inteligência.
               </p>
-              
+
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className="bg-blue-600 hover:bg-blue-700"
                   onClick={() => navigate("/login")}
                 >
                   Entrar com Usuário/Senha
                 </Button>
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   variant="outline"
                   onClick={() => navigate("/register")}
                 >
@@ -50,17 +50,7 @@ export default function Home() {
                 </Button>
               </div>
 
-              {/* Manus OAuth button - only show if configured */}
-              {import.meta.env.VITE_OAUTH_PORTAL_URL && (
-                <div className="mb-8">
-                  <p className="text-gray-600 mb-4">ou</p>
-                  <a href={getLoginUrl()}>
-                    <Button size="lg" variant="secondary">
-                      Entrar com Manus
-                    </Button>
-                  </a>
-                </div>
-              )}
+
             </div>
 
             <div className="grid md:grid-cols-2 gap-6 mb-12">
@@ -87,7 +77,7 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600">
-                    Priorize leads com base em múltiplos fatores: preço, urgência, localização e características do veículo.
+                    Priorize prospecções com base em múltiplos fatores: preço, urgência, localização e características do veículo.
                   </p>
                 </CardContent>
               </Card>
@@ -142,7 +132,7 @@ export default function Home() {
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-blue-600 font-bold">✓</span>
-                  <span>Notificações de leads de alta prioridade</span>
+                  <span>Notificações de prospecções de alta prioridade</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-blue-600 font-bold">✓</span>
@@ -165,8 +155,7 @@ export default function Home() {
               Bem-vindo, {user?.name || "Usuário"}!
             </h1>
             <p className="text-xl text-gray-600 mb-8">
-              Você está pronto para começar a gerenciar seus leads
-            </p>
+              Você está pronto para começar a gerenciar suas prospecções de forma inteligente?          </p>
             <Button
               size="lg"
               onClick={() => navigate("/dashboard")}
@@ -185,7 +174,7 @@ export default function Home() {
                 <p>1. Configure seus filtros de busca</p>
                 <p>2. Defina as regras de scoring</p>
                 <p>3. Inicie a coleta de anúncios</p>
-                <p>4. Analise e gerencie seus leads</p>
+                <p>4. Analise e gerencie suas prospecções</p>
               </CardContent>
             </Card>
 
@@ -197,7 +186,7 @@ export default function Home() {
                 <p className="text-gray-600">Acesse a documentação para aprender mais sobre:</p>
                 <ul className="list-disc list-inside text-gray-600">
                   <li>Configuração de filtros</li>
-                  <li>Scoring de leads</li>
+                  <li>Scoring de prospecções automático com base em regras que você define.</li>
                   <li>Exportação de dados</li>
                 </ul>
               </CardContent>

@@ -1,4 +1,5 @@
 import type { VehicleAd } from "../../drizzle/schema";
+import { BaseScraper } from "../scrapers/baseScraper";
 
 export interface FilterCriteria {
   minPrice?: number;
@@ -31,35 +32,52 @@ export class FilterEngine {
 
   matches(ad: VehicleAd): boolean {
     const price = ad.price ? parseFloat(String(ad.price)) : undefined;
-    
+
     if (this.criteria.minPrice !== undefined && price && price < this.criteria.minPrice) {
+      console.log(`[Filter] Price ${price} < min ${this.criteria.minPrice}`);
       return false;
     }
 
     if (this.criteria.maxPrice !== undefined && price && price > this.criteria.maxPrice) {
+      console.log(`[Filter] Price ${price} > max ${this.criteria.maxPrice}`);
       return false;
     }
 
     if (this.criteria.minYear !== undefined && ad.year && ad.year < this.criteria.minYear) {
+      console.log(`[Filter] Year ${ad.year} < min ${this.criteria.minYear}`);
       return false;
     }
 
     if (this.criteria.maxYear !== undefined && ad.year && ad.year > this.criteria.maxYear) {
+      console.log(`[Filter] Year ${ad.year} > max ${this.criteria.maxYear}`);
       return false;
     }
 
     if (this.criteria.maxMileage !== undefined && ad.mileage && ad.mileage > this.criteria.maxMileage) {
+      console.log(`[Filter] Mileage ${ad.mileage} > max ${this.criteria.maxMileage}`);
       return false;
     }
 
     if (this.criteria.brands && this.criteria.brands.length > 0) {
-      if (!ad.brand || !this.criteria.brands.includes(ad.brand.toLowerCase())) {
+      const adBrandNorm = BaseScraper.normalizeString(ad.brand || "", true);
+      const brandMatch = this.criteria.brands.some(b => {
+        const criteriaBrandNorm = BaseScraper.normalizeString(b, true);
+        return adBrandNorm.includes(criteriaBrandNorm) || criteriaBrandNorm.includes(adBrandNorm);
+      });
+      if (!brandMatch) {
+        console.log(`[Filter] Brand mismatch: Got "${ad.brand}" (norm: ${adBrandNorm}), expected one of [${this.criteria.brands}]`);
         return false;
       }
     }
 
     if (this.criteria.models && this.criteria.models.length > 0) {
-      if (!ad.model || !this.criteria.models.includes(ad.model.toLowerCase())) {
+      const adModelNorm = BaseScraper.normalizeString(ad.model || "", true);
+      const modelMatch = this.criteria.models.some(m => {
+        const criteriaModelNorm = BaseScraper.normalizeString(m, true);
+        return adModelNorm.includes(criteriaModelNorm) || criteriaModelNorm.includes(adModelNorm);
+      });
+      if (!modelMatch) {
+        console.log(`[Filter] Model mismatch: Got "${ad.model}" (norm: ${adModelNorm}), expected one of [${this.criteria.models}]`);
         return false;
       }
     }

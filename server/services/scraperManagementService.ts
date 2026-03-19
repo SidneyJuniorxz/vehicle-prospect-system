@@ -178,7 +178,7 @@ export class ScraperManagementService {
       version: scrapedAd.version,
       year: scrapedAd.year,
       mileage: scrapedAd.mileage,
-      price: scrapedAd.price,
+      price: scrapedAd.price?.toString(),
       city: scrapedAd.city,
       state: scrapedAd.state,
       sellerType: scrapedAd.sellerType,

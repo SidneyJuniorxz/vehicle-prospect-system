@@ -18,6 +18,9 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
+  // Prevent redirect loop if already on login page or registering
+  if (window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/register')) return;
+
   window.location.href = getLoginUrl();
 };
 
@@ -42,11 +45,14 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
+      headers() {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          return {
+            Authorization: `Bearer ${token}`
+          };
+        }
+        return {};
       },
     }),
   ],

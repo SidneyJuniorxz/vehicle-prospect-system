@@ -1,19 +1,29 @@
-import { decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, json, index } from "drizzle-orm/mysql-core";
+import { numeric, integer, pgEnum, pgTable, text, timestamp, varchar, boolean, jsonb, index, uniqueIndex, serial } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 /**
- * Core user table backing auth flow.
- * Extended with role-based access control for the vehicle prospect system.
+ * Enums
  */
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const userRoleEnum = pgEnum("user_role", ["admin", "analyst", "viewer"]);
+export const sourceEnum = pgEnum("source", ["olx", "mercado_livre", "webmotors", "icarros", "socarrao", "manual", "api"]);
+export const sellerTypeEnum = pgEnum("seller_type", ["individual", "dealer", "reseller", "unknown"]);
+export const priorityEnum = pgEnum("priority", ["high", "medium", "low"]);
+export const leadStatusEnum = pgEnum("lead_status", ["new", "sent", "filtered", "reviewed", "approved", "rejected", "in_progress", "completed"]);
+export const notificationTypeEnum = pgEnum("notification_type", ["new_lead", "high_priority", "collection_complete", "system"]);
+export const jobStatusEnum = pgEnum("job_status", ["pending", "running", "completed", "failed"]);
+
+/**
+ * Core user table backing auth flow.
+ */
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["admin", "analyst", "viewer"]).default("viewer").notNull(),
+  role: userRoleEnum("role").default("viewer").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -23,32 +33,33 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * Vehicle advertisements collected from various sources
  */
-export const vehicleAds = mysqlTable("vehicle_ads", {
-  id: int("id").autoincrement().primaryKey(),
+export const vehicleAds = pgTable("vehicle_ads", {
+  id: serial("id").primaryKey(),
   externalId: varchar("external_id", { length: 255 }).notNull(),
-  source: mysqlEnum("source", ["olx", "mercado_livre", "manual", "api"]).notNull(),
+  source: sourceEnum("source").notNull(),
   url: text("url"),
   title: text("title").notNull(),
   brand: varchar("brand", { length: 100 }),
   model: varchar("model", { length: 100 }),
   version: varchar("version", { length: 100 }),
-  year: int("year"),
-  mileage: int("mileage"), // in km
-  price: decimal("price", { precision: 12, scale: 2 }),
+  year: integer("year"),
+  mileage: integer("mileage"), // in km
+  price: numeric("price", { precision: 12, scale: 2 }),
   city: varchar("city", { length: 100 }),
   state: varchar("state", { length: 2 }),
-  sellerType: mysqlEnum("seller_type", ["individual", "dealer", "reseller", "unknown"]).default("unknown"),
+  sellerType: sellerTypeEnum("seller_type").default("unknown"),
   sellerName: varchar("seller_name", { length: 255 }),
+  contactInfo: varchar("contact_info", { length: 255 }), // Phone, WhatsApp link, or email
   description: text("description"),
-  photoCount: int("photo_count").default(0),
-  photoUrls: json("photo_urls"), // JSON array of photo URLs
+  photoCount: integer("photo_count").default(0),
+  photoUrls: jsonb("photo_urls"), // JSONB array of photo URLs
   adPostedAt: timestamp("ad_posted_at"),
   collectedAt: timestamp("collected_at").defaultNow().notNull(),
   lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
   isActive: boolean("is_active").default(true),
   hash: varchar("hash", { length: 64 }), // For deduplication
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   externalIdIdx: index("external_id_idx").on(table.externalId),
   sourceIdx: index("source_idx").on(table.source),
@@ -62,17 +73,17 @@ export type InsertVehicleAd = typeof vehicleAds.$inferInsert;
 /**
  * Leads: qualified opportunities from vehicle ads
  */
-export const leads = mysqlTable("leads", {
-  id: int("id").autoincrement().primaryKey(),
-  adId: int("ad_id").notNull(),
-  score: decimal("score", { precision: 5, scale: 2 }).default("0"),
-  priority: mysqlEnum("priority", ["high", "medium", "low"]).default("low"),
+export const leads = pgTable("leads", {
+  id: serial("id").primaryKey(),
+  adId: integer("ad_id").notNull(),
+  score: numeric("score", { precision: 5, scale: 2 }).default("0"),
+  priority: priorityEnum("priority").default("low"),
   scoreReason: text("score_reason"),
-  status: mysqlEnum("status", ["new", "filtered", "reviewed", "approved", "rejected", "in_progress", "completed"]).default("new"),
+  status: leadStatusEnum("status").default("new"),
   notes: text("notes"),
   contactedAt: timestamp("contacted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   adIdIdx: index("lead_ad_id_idx").on(table.adId),
   priorityIdx: index("lead_priority_idx").on(table.priority),
@@ -85,15 +96,15 @@ export type InsertLead = typeof leads.$inferInsert;
 /**
  * Filter configurations for ad collection and lead qualification
  */
-export const filterConfigs = mysqlTable("filter_configs", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
+export const filterConfigs = pgTable("filter_configs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   isActive: boolean("is_active").default(true),
-  config: json("config").notNull(), // Stores filter criteria as JSON
+  config: jsonb("config").notNull(), // Stores filter criteria as JSON
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export type FilterConfig = typeof filterConfigs.$inferSelect;
@@ -102,15 +113,15 @@ export type InsertFilterConfig = typeof filterConfigs.$inferInsert;
 /**
  * Scoring rules for lead prioritization
  */
-export const scoringRules = mysqlTable("scoring_rules", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
+export const scoringRules = pgTable("scoring_rules", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   isActive: boolean("is_active").default(true),
-  rules: json("rules").notNull(), // Stores scoring rules as JSON
+  rules: jsonb("rules").notNull(), // Stores scoring rules as JSON
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export type ScoringRule = typeof scoringRules.$inferSelect;
@@ -119,33 +130,53 @@ export type InsertScoringRule = typeof scoringRules.$inferInsert;
 /**
  * Scheduled collection jobs
  */
-export const collectionJobs = mysqlTable("collection_jobs", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
+export const collectionJobs = pgTable("collection_jobs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
-  source: mysqlEnum("source", ["olx", "mercado_livre", "all"]).notNull(),
+  source: varchar("source", { length: 50 }), // Can be "all" or specific
+  status: jobStatusEnum("status").default("pending").notNull(),
+  progress: jsonb("progress").default({ processed: 0, total: 0, currentStep: "", lastMessage: "" }),
+  error: text("error"),
   cronExpression: varchar("cron_expression", { length: 255 }),
   isActive: boolean("is_active").default(true),
-  config: json("config").notNull(), // Search parameters
+  config: jsonb("config").notNull(), // Search parameters
   lastRunAt: timestamp("last_run_at"),
   nextRunAt: timestamp("next_run_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export type CollectionJob = typeof collectionJobs.$inferSelect;
 export type InsertCollectionJob = typeof collectionJobs.$inferInsert;
 
 /**
+ * WhatsApp Message Templates
+ */
+export const whatsappTemplates = pgTable("whatsapp_templates", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  status: varchar("status", { length: 50 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  userIdStatusUnique: uniqueIndex("user_id_status_unique").on(table.userId, table.status),
+}));
+
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
+export type InsertWhatsappTemplate = typeof whatsappTemplates.$inferInsert;
+
+/**
  * Activity logs for audit trail
  */
-export const activityLogs = mysqlTable("activity_logs", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id"),
+export const activityLogs = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id"),
   action: varchar("action", { length: 100 }).notNull(),
   entityType: varchar("entity_type", { length: 50 }),
-  entityId: int("entity_id"),
-  details: json("details"),
+  entityId: integer("entity_id"),
+  details: jsonb("details"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userIdIdx: index("log_user_id_idx").on(table.userId),
@@ -158,13 +189,13 @@ export type InsertActivityLog = typeof activityLogs.$inferInsert;
 /**
  * Notifications for users
  */
-export const notifications = mysqlTable("notifications", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull(),
-  type: mysqlEnum("type", ["new_lead", "high_priority", "collection_complete", "system"]).notNull(),
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  type: notificationTypeEnum("type").notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message"),
-  leadId: int("lead_id"),
+  leadId: integer("lead_id"),
   isRead: boolean("is_read").default(false),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -176,10 +207,10 @@ export type InsertNotification = typeof notifications.$inferInsert;
 /**
  * Price history for tracking price changes
  */
-export const priceHistory = mysqlTable("price_history", {
-  id: int("id").autoincrement().primaryKey(),
-  adId: int("ad_id").notNull(),
-  price: decimal("price", { precision: 12, scale: 2 }).notNull(),
+export const priceHistory = pgTable("price_history", {
+  id: serial("id").primaryKey(),
+  adId: integer("ad_id").notNull(),
+  price: numeric("price", { precision: 12, scale: 2 }).notNull(),
   recordedAt: timestamp("recorded_at").defaultNow().notNull(),
 });
 

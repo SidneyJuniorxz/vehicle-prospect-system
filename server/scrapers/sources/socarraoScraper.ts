@@ -14,7 +14,7 @@ export class SoCarraoScraper extends BaseScraper {
     try {
       const searchUrl = this.buildSearchUrl(criteria);
       const html = await this.fetchWithRetry(searchUrl);
-      const ads = this.parseAds(html);
+      const ads = this.parseAds(html, criteria);
 
       console.log(`[SóCarrão] Found ${ads.length} ads`);
       return ads;
@@ -40,10 +40,18 @@ export class SoCarraoScraper extends BaseScraper {
       params.append("precoMax", criteria.maxPrice);
     }
 
-    return `/busca?${params.toString()}`;
+    // Add search query for brand and model
+    const queryParts = [];
+    if (criteria.brand) queryParts.push(criteria.brand);
+    if (criteria.model) queryParts.push(criteria.model);
+    if (queryParts.length > 0) {
+      params.append("busca", queryParts.join(" "));
+    }
+
+    return `${this.config.baseUrl}/busca?${params.toString()}`;
   }
 
-  private parseAds(html: string): ScrapedVehicleAd[] {
+  private parseAds(html: string, criteria: Record<string, any>): ScrapedVehicleAd[] {
     const ads: ScrapedVehicleAd[] = [];
 
     try {
@@ -80,8 +88,8 @@ export class SoCarraoScraper extends BaseScraper {
           const yearText = $element.find(".year, .ano").text() || "";
           const year = this.extractYear(yearText);
 
-          // Extract brand and model
-          const { brand, model } = this.extractBrandModel(title);
+          // Extract real brand and model from title
+          const { brand: extractedBrand, model: extractedModel } = BaseScraper.extractBrandAndModel(title);
 
           // Extract seller type
           const sellerType = this.extractSellerType($element);
@@ -97,8 +105,8 @@ export class SoCarraoScraper extends BaseScraper {
             source: this.config.source,
             url: url.startsWith("http") ? url : `${this.config.baseUrl}${url}`,
             title: title.trim(),
-            brand,
-            model,
+            brand: extractedBrand || criteria.brand,
+            model: extractedModel || criteria.model,
             year,
             mileage,
             price,
@@ -128,12 +136,14 @@ export class SoCarraoScraper extends BaseScraper {
     return match ? match[1] : "";
   }
 
-  private extractPrice(priceText: string): string {
+  private extractPrice(priceText: string): number | undefined {
     const match = priceText.match(/[\d.]+(?:,\d+)?/);
     if (match) {
-      return match[0].replace(/\./g, "").replace(",", "");
+      const p = match[0].replace(/\./g, "").replace(",", ".");
+      const num = parseFloat(p);
+      return !isNaN(num) ? num : undefined;
     }
-    return "";
+    return undefined;
   }
 
   private parseLocation(locationText: string): { city: string; state: string } {

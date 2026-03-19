@@ -5,12 +5,11 @@ import { ScraperManagementService } from "./scraperManagementService";
 export interface ScheduledJob {
   id: number;
   name: string;
-  cronExpression: string;
-  sources: string[];
-  criteria: Record<string, any>;
-  enabled: boolean;
-  lastRun?: Date;
-  nextRun?: Date;
+  cronExpression: string | null;
+  config: Record<string, any>;
+  isActive: boolean | null;
+  lastRunAt?: Date | null;
+  nextRunAt?: Date | null;
   createdAt: Date;
 }
 
@@ -29,7 +28,7 @@ export class JobSchedulerService {
       const jobs = await getCollectionJobs();
 
       for (const job of jobs as any[]) {
-        if ((job as any).enabled) {
+        if (job.isActive) {
           this.scheduleJob(job);
         }
       }
@@ -54,16 +53,19 @@ export class JobSchedulerService {
       throw new Error("Invalid cron expression");
     }
 
+    const jobConfig = { sources, criteria };
+
     // Create job in database
-    const job = await createCollectionJob({
+    const jobArray = await createCollectionJob({
+      userId: 1, // System default or admin user
       name,
       cronExpression,
-      sources: JSON.stringify(sources),
-      criteria: JSON.stringify(criteria),
-      enabled: true,
-      lastRun: null,
-      nextRun: this.calculateNextRun(cronExpression),
+      config: jobConfig,
+      isActive: true,
+      lastRunAt: null,
+      nextRunAt: this.calculateNextRun(cronExpression),
     });
+    const job = jobArray[0];
 
     // Schedule it
     this.scheduleJob(job);
@@ -74,7 +76,7 @@ export class JobSchedulerService {
       userId: null,
     });
 
-    return job;
+    return job as unknown as ScheduledJob;
   }
 
   /**
@@ -82,9 +84,10 @@ export class JobSchedulerService {
    */
   private scheduleJob(job: any): void {
     try {
-      // Parse sources and criteria from JSON if needed
-      const sources = typeof job.sources === "string" ? JSON.parse(job.sources) : job.sources;
-      const criteria = typeof job.criteria === "string" ? JSON.parse(job.criteria) : job.criteria;
+      // Parse config from JSON if needed
+      const config = typeof job.config === "string" ? JSON.parse(job.config) : job.config;
+      const sources = config?.sources || [];
+      const criteria = config?.criteria || {};
 
       // Create cron task
       const task = cron.schedule((job as any).cronExpression, async () => {
@@ -140,8 +143,8 @@ export class JobSchedulerService {
       const jobs = await getCollectionJobs();
       const jobData = (jobs as any[]).find((j: any) => j.id === jobId);
       await updateCollectionJob(jobId, {
-        lastRun: new Date(),
-        nextRun: this.calculateNextRun(jobData?.cronExpression || ""),
+        lastRunAt: new Date(),
+        nextRunAt: this.calculateNextRun(jobData?.cronExpression || ""),
       });
 
       // Log activity
@@ -176,7 +179,7 @@ export class JobSchedulerService {
       throw new Error("Job not found");
     }
 
-    await updateCollectionJob(jobId, { enabled: true });
+    await updateCollectionJob(jobId, { isActive: true });
     this.scheduleJob(job);
 
     await createActivityLog({
@@ -196,7 +199,7 @@ export class JobSchedulerService {
       this.jobs.delete(jobId);
     }
 
-    await updateCollectionJob(jobId, { enabled: false });
+    await updateCollectionJob(jobId, { isActive: false });
 
     const jobs = await getCollectionJobs();
     const job = jobs.find((j: any) => j.id === jobId) as any;
@@ -211,7 +214,7 @@ export class JobSchedulerService {
   /**
    * Get all jobs
    */
-  async getJobs(): Promise<ScheduledJob[]> {
+  async getJobs(): Promise<any[]> {
     return getCollectionJobs();
   }
 

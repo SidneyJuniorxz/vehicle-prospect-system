@@ -13,12 +13,18 @@ import {
   createScoringRule,
   getUserNotifications,
   logActivity,
+  createCollectionJob,
+  getCollectionJob,
+  getCollectionJobs,
 } from "./db";
 import { CollectionService } from "./services/collectionService";
 import { getLocalAuthService } from "./services/localAuthService";
 import { generateToken } from "./_core/authMiddleware";
-import { eq, desc } from "drizzle-orm";
-import { leads, vehicleAds, notifications } from "../drizzle/schema";
+import { eq, desc, ilike, and, isNotNull } from "drizzle-orm";
+import { leads, vehicleAds, notifications, collectionJobs } from "../drizzle/schema";
+import { monitoringRouter } from "./routers/monitoringRouter";
+import { exportRouter } from "./routers/exportRouter";
+import { whatsappRouter } from "./routers/whatsappRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -52,6 +58,11 @@ export const appRouter = router({
           });
           const cookieOptions = getSessionCookieOptions(ctx.req);
           ctx.res.cookie(COOKIE_NAME, token, cookieOptions);
+
+          return {
+            ...result,
+            token
+          };
         }
 
         return result;
@@ -90,6 +101,8 @@ export const appRouter = router({
         z.object({
           priority: z.enum(["high", "medium", "low"]).optional(),
           status: z.string().optional(),
+          brand: z.string().optional(),
+          model: z.string().optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
@@ -98,32 +111,115 @@ export const appRouter = router({
         const db = await getDb();
         if (!db) return [];
 
-        let query = db.select().from(leads) as any;
-        
-        if (input.priority) {
-          query = query.where(eq(leads.priority, input.priority as any));
-        }
-        if (input.status) {
-          query = query.where(eq(leads.status, input.status as any));
-        }
+        let conditions = [];
+        if (input.priority) conditions.push(eq(leads.priority, input.priority as any));
+        if (input.status) conditions.push(eq(leads.status, input.status as any));
+        if (input.brand) conditions.push(ilike(vehicleAds.brand, `%${input.brand}%`));
+        if (input.model) conditions.push(ilike(vehicleAds.model, `%${input.model}%`));
 
-        const results = await query
-          .orderBy(desc(leads.score))
+        const query = db
+          .select({
+            lead: leads,
+            ad: vehicleAds,
+          })
+          .from(leads)
+          .leftJoin(vehicleAds, eq(leads.adId, vehicleAds.id))
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
+          .orderBy(desc(leads.score), desc(leads.createdAt))
           .limit(input.limit)
           .offset(input.offset);
-        return results;
+
+        const results = await query;
+        return results.map(r => ({ ...r.lead, ad: r.ad }));
       }),
+
+    stats: protectedProcedure
+      .input(
+        z.object({
+          brand: z.string().optional(),
+          model: z.string().optional(),
+        })
+      )
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return { total: 0, new: 0, high: 0, medium: 0, low: 0 };
+
+        let conditions = [];
+        if (input.brand) conditions.push(ilike(vehicleAds.brand, `%${input.brand}%`));
+        if (input.model) conditions.push(ilike(vehicleAds.model, `%${input.model}%`));
+
+        let query = db
+          .select({
+            priority: leads.priority,
+            status: leads.status
+          })
+          .from(leads);
+
+        if (conditions.length > 0) {
+          query = query
+            .leftJoin(vehicleAds, eq(leads.adId, vehicleAds.id))
+            .where(and(...conditions)) as any;
+        }
+
+        const allLeads = await query;
+
+        return {
+          total: allLeads.length,
+          new: allLeads.filter(l => l.status === "new").length,
+          high: allLeads.filter(l => l.priority === "high").length,
+          medium: allLeads.filter(l => l.priority === "medium").length,
+          low: allLeads.filter(l => l.priority === "low").length,
+        };
+      }),
+
+    getFilterOptions: protectedProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { brands: [], models: [] };
+
+      // Get unique brands and models from the database
+      const data = await db
+        .select({
+          brand: vehicleAds.brand,
+          model: vehicleAds.model,
+        })
+        .from(vehicleAds)
+        .where(isNotNull(vehicleAds.brand));
+
+      const brands = new Set<string>();
+      const models = new Set<string>();
+
+      data.forEach((row) => {
+        if (row.brand) brands.add(row.brand);
+        if (row.model) models.add(row.model);
+      });
+
+      return {
+        brands: Array.from(brands).sort(),
+        models: Array.from(models).sort(),
+      };
+    }),
 
     getById: protectedProcedure.input(z.number()).query(async ({ input }) => {
       const db = await getDb();
       if (!db) return null;
 
-      const result = await (db as any)
-        .select()
+      const result = await db
+        .select({
+          lead: leads,
+          ad: vehicleAds
+        })
         .from(leads)
+        .leftJoin(vehicleAds, eq(leads.adId, vehicleAds.id))
         .where(eq(leads.id, input))
         .limit(1);
-      return result[0] || null;
+
+      if (result.length === 0) return null;
+
+      const row = result[0];
+      return {
+        ...row.lead,
+        ad: row.ad
+      };
     }),
 
     update: protectedProcedure
@@ -158,19 +254,50 @@ export const appRouter = router({
     collect: protectedProcedure
       .input(
         z.object({
+          name: z.string().default("Busca Manual"),
           searchParams: z.record(z.string(), z.any()),
           filterCriteria: z.record(z.string(), z.any()).optional(),
+          useLLM: z.boolean().optional().default(false),
+          autoSend: z.boolean().optional().default(false),
         })
       )
       .mutation(async ({ input, ctx }) => {
+        // 1. Create the job record
+        const jobResult = await createCollectionJob({
+          userId: ctx.user.id,
+          name: input.name,
+          source: "all",
+          status: "pending",
+          config: input.searchParams,
+        });
+
+        const jobId = (jobResult as any)[0]?.id || (jobResult as any).id;
+
+        // 2. Start the service in the background
         const service = new CollectionService();
-        const result = await service.collect({
+        void service.collect({
           userId: ctx.user.id,
           searchParams: input.searchParams,
           filterCriteria: input.filterCriteria,
+          jobId: jobId,
+          useLLM: input.useLLM,
+          autoSend: input.autoSend,
+        }).catch(err => {
+          console.error(`[Collection Router] Job ${jobId} failed:`, err);
         });
 
-        return result;
+        return { jobId };
+      }),
+
+    getJobStatus: protectedProcedure
+      .input(z.number())
+      .query(async ({ input }) => {
+        return getCollectionJob(input);
+      }),
+
+    listJobs: protectedProcedure
+      .query(async ({ ctx }) => {
+        return getCollectionJobs(ctx.user.id);
       }),
   }),
 
@@ -247,6 +374,10 @@ export const appRouter = router({
         return getUserNotifications(ctx.user.id, input.limit);
       }),
   }),
+
+  monitoring: monitoringRouter,
+  export: exportRouter,
+  whatsapp: whatsappRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -16,7 +16,6 @@ router.get("/health", (req: Request, res: Response) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    deploymentMode: req.deploymentMode,
   });
 });
 
@@ -26,7 +25,6 @@ router.get("/health", (req: Request, res: Response) => {
 router.get("/version", (req: Request, res: Response) => {
   res.json({
     version: "1.0.0",
-    deploymentMode: req.deploymentMode,
     features: ["scraping", "filtering", "scoring", "export"],
   });
 });

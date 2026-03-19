@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,27 +16,41 @@ export default function Login() {
 
   const loginMutation = trpc.auth.localLogin.useMutation({
     onSuccess: (data: any) => {
+      console.log("=== LOGIN MUTATION SUCCESS ===", data);
       if (data.success) {
-        // Redirect to dashboard
-        setLocation("/dashboard");
+        if (data.token) {
+          console.log("=== SAVING TOKEN TO LOCALSTORAGE ===", data.token.substring(0, 15) + '...');
+          localStorage.setItem('auth_token', data.token);
+        } else {
+          console.error("=== NO TOKEN IN SUCCESS RESPONSE! ===");
+        }
+        alert("LOGIN BEM SUCEDIDO! Se a tela voltar para cá depois desse aviso, o problema é no carregamento do Dashboard.");
+        window.location.href = "/dashboard";
       } else {
+        console.error("=== LOGIN RETURNED SUCCESS: FALSE ===", data);
+        alert("Falha no login: " + (data.message || "Erro desconhecido"));
         setError(data.message || "Login failed");
       }
     },
     onError: (error: any) => {
+      console.error("=== LOGIN MUTATION ONERROR ===", error);
+      alert("ERRO NA REQUISIÇÃO: " + error.message);
       setError(error.message || "An error occurred");
     },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    console.log("=== SUBMIT CLICKED ===", { email, passwordLength: password.length });
     setError("");
     setIsLoading(true);
 
     try {
+      console.log("=== CALLING MUTATION ===");
       await loginMutation.mutateAsync({ email, password });
+      console.log("=== MUTATION AWAIT FINISHED ===");
     } catch (err) {
-      setError("Login failed. Please try again.");
+      console.error("=== CATCH BLOCK HIT ===", err);
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +65,7 @@ export default function Login() {
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-4">
             {error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -89,7 +103,12 @@ export default function Login() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={handleSubmit}
+              disabled={isLoading}
+            >
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -118,7 +137,7 @@ export default function Login() {
             >
               Create Account
             </Button>
-          </form>
+          </div>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
             <p>Demo credentials:</p>

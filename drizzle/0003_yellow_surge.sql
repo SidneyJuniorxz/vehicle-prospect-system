@@ -1,0 +1,1 @@
+ALTER TABLE "vehicle_ads" ADD COLUMN "contact_info" varchar(255);
