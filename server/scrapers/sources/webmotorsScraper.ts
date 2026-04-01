@@ -28,7 +28,8 @@ export class WebmotorsScraper extends BaseScraper {
             console.log(`[Webmotors] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
             const contactInfo = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
-              await this.humanLikeDelay(1500, 2800);
+              await page.waitForLoadState('networkidle').catch(() => {});
+              await this.humanLikeDelay(1800, 3200);
 
               // Scroll para acionar lazy/modais
               await page.mouse.wheel(0, 800).catch(() => {});
@@ -46,6 +47,10 @@ export class WebmotorsScraper extends BaseScraper {
 
               const pageHtml = await page.content();
               let phone = BaseScraper.extractPhoneNumbers(pageHtml);
+              if (!phone) {
+                const telHref = await page.locator('a[href^="tel:"]').first().getAttribute('href').catch(() => "");
+                phone = BaseScraper.extractPhoneNumbers(telHref || "");
+              }
               if (!phone) {
                 const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
                 phone = BaseScraper.extractPhoneNumbers(modalText || "");

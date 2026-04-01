@@ -28,7 +28,8 @@ export class OlxScraper extends BaseScraper {
             console.log(`[OLX] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
             const { contactInfo, price } = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
-              await this.humanLikeDelay(1500, 2800);
+              await page.waitForLoadState('networkidle').catch(() => {});
+              await this.humanLikeDelay(1800, 3200);
 
               // Pequeno scroll para simular humano e carregar lazy content
               await page.mouse.wheel(0, 600).catch(() => {});
@@ -47,7 +48,11 @@ export class OlxScraper extends BaseScraper {
               const pageHtml = await page.content();
               let phone = BaseScraper.extractPhoneNumbers(pageHtml);
               if (!phone) {
-                // Tenta extrair de um modal ou script inline
+                // tel: links
+                const telHref = await page.locator('a[href^="tel:"]').first().getAttribute('href').catch(() => "");
+                phone = BaseScraper.extractPhoneNumbers(telHref || "");
+              }
+              if (!phone) {
                 const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
                 phone = BaseScraper.extractPhoneNumbers(modalText || "");
               }

@@ -15,7 +15,7 @@ async function main() {
     maxPrice: 120000,
     deepScrape: true,
     maxDeepScrape: 8,
-    visibleBrowser: false,
+    visibleBrowser: true, // headful ajuda a evitar bloqueios
   };
 
   console.log("Iniciando coleta amostral com critérios:", criteria);
