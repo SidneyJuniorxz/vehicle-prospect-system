@@ -28,20 +28,29 @@ export class WebmotorsScraper extends BaseScraper {
             console.log(`[Webmotors] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
             const contactInfo = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
-              await this.humanLikeDelay(1200, 2200);
+              await this.humanLikeDelay(1500, 2800);
+
+              // Scroll para acionar lazy/modais
+              await page.mouse.wheel(0, 800).catch(() => {});
+              await this.humanLikeDelay(800, 1400);
 
               // Try to find and click the contact button on Webmotors
-              const btnRegex = /(Ver telefone|WhatsApp|Mensagem)/i;
+              const btnRegex = /(Ver telefone|Telefone|WhatsApp|Mensagem|Mostrar telefone)/i;
               const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
                 || await page.getByText(btnRegex).first().catch(() => null);
 
               if (button) {
                 await button.click().catch((e: any) => console.log('Button click err:', e.message));
-                await this.humanLikeDelay(1500, 3000); // Wait for number/modal to reveal
+                await this.humanLikeDelay(2000, 4000); // Wait for number/modal to reveal
               }
 
               const pageHtml = await page.content();
-              return BaseScraper.extractPhoneNumbers(pageHtml);
+              let phone = BaseScraper.extractPhoneNumbers(pageHtml);
+              if (!phone) {
+                const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
+                phone = BaseScraper.extractPhoneNumbers(modalText || "");
+              }
+              return phone;
             }, { visibleBrowser: criteria.visibleBrowser });
 
             if (contactInfo) {

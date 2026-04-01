@@ -28,20 +28,29 @@ export class OlxScraper extends BaseScraper {
             console.log(`[OLX] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
             const { contactInfo, price } = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
-              await this.humanLikeDelay(1200, 2200);
+              await this.humanLikeDelay(1500, 2800);
+
+              // Pequeno scroll para simular humano e carregar lazy content
+              await page.mouse.wheel(0, 600).catch(() => {});
+              await this.humanLikeDelay(800, 1400);
 
               // Try to find and click the contact button
-              const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato)/i;
+              const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato|Falar com vendedor)/i;
               const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
                 || await page.getByText(btnRegex).first().catch(() => null);
 
               if (button) {
                 await button.click().catch((e: any) => console.log('Button click err:', e.message));
-                await this.humanLikeDelay(1500, 3000); // Wait for the number to reveal
+                await this.humanLikeDelay(2000, 4000); // Wait for the number to reveal
               }
 
               const pageHtml = await page.content();
-              const phone = BaseScraper.extractPhoneNumbers(pageHtml);
+              let phone = BaseScraper.extractPhoneNumbers(pageHtml);
+              if (!phone) {
+                // Tenta extrair de um modal ou script inline
+                const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
+                phone = BaseScraper.extractPhoneNumbers(modalText || "");
+              }
 
               // Robust price extraction on the ad page
               let priceText = await page.locator("[data-testid='ad-price']").first().textContent().catch(() => "");
