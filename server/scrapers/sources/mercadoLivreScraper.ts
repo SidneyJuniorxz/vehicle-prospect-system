@@ -12,9 +12,44 @@ export class MercadoLivreScraper extends BaseScraper {
 
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
+      const deepScrape = criteria.deepScrape !== false; // default true
+      const maxDeep = criteria.maxDeepScrape ?? 8;
+
       const searchUrl = this.buildSearchUrl(criteria);
       const html = await this.fetchWithRetry(searchUrl, { visibleBrowser: criteria.visibleBrowser });
       const ads = this.parseAds(html, criteria);
+
+      if (deepScrape && ads.length > 0) {
+        const slice = ads.slice(0, maxDeep);
+        console.log(`[Mercado Livre] Deep scraping ${slice.length}/${ads.length} ads for contact...`);
+        for (let i = 0; i < slice.length; i++) {
+          const ad = ads[i];
+          try {
+            const contactInfo = await this.runInBrowser(ad.url, async (page) => {
+              await page.waitForLoadState('domcontentloaded');
+              await this.humanLikeDelay(1200, 2200);
+
+              // Try to click "Ver telefone" / "WhatsApp"
+              const btnRegex = /(Ver telefone|Telefone|WhatsApp)/i;
+              const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
+                || await page.getByText(btnRegex).first().catch(() => null);
+              if (button) {
+                await button.click().catch(() => {});
+                await this.humanLikeDelay(1500, 3000);
+              }
+
+              const html = await page.content();
+              return BaseScraper.extractPhoneNumbers(html);
+            }, { visibleBrowser: criteria.visibleBrowser });
+
+            if (contactInfo) {
+              ad.contactInfo = contactInfo;
+            }
+          } catch (e) {
+            console.error(`[Mercado Livre] Failed to deep scrape ${ad.url}`);
+          }
+        }
+      }
 
       console.log(`[Mercado Livre] Found ${ads.length} ads`);
       return ads;

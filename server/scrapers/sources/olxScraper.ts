@@ -12,21 +12,26 @@ export class OlxScraper extends BaseScraper {
 
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
+      const deepScrape = criteria.deepScrape !== false; // default: true
+      const maxDeep = criteria.maxDeepScrape ?? 10;
+
       const searchUrl = this.buildSearchUrl(criteria);
       const html = await this.fetchWithRetry(searchUrl, { visibleBrowser: criteria.visibleBrowser });
       let ads = this.parseAds(html, criteria);
 
-      if (criteria.deepScrape && ads.length > 0) {
-        console.log(`[OLX] Deep scraping ${ads.length} ads for contacts...`);
-        for (let i = 0; i < ads.length; i++) {
+      if (deepScrape && ads.length > 0) {
+        const slice = ads.slice(0, maxDeep);
+        console.log(`[OLX] Deep scraping ${slice.length}/${ads.length} ads for price/contact...`);
+        for (let i = 0; i < slice.length; i++) {
           const ad = ads[i];
           try {
             console.log(`[OLX] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
-            const contactInfo = await this.runInBrowser(ad.url, async (page) => {
+            const { contactInfo, price } = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
+              await this.humanLikeDelay(1200, 2200);
 
               // Try to find and click the contact button
-              const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone)/i;
+              const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato)/i;
               const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
                 || await page.getByText(btnRegex).first().catch(() => null);
 
@@ -36,11 +41,22 @@ export class OlxScraper extends BaseScraper {
               }
 
               const pageHtml = await page.content();
-              return BaseScraper.extractPhoneNumbers(pageHtml);
+              const phone = BaseScraper.extractPhoneNumbers(pageHtml);
+
+              // Robust price extraction on the ad page
+              let priceText = await page.locator("[data-testid='ad-price']").first().textContent().catch(() => "");
+              if (!priceText) priceText = await page.locator("span:has-text('R$')").first().textContent().catch(() => "");
+              if (!priceText) priceText = (pageHtml.match(/R\$\s?[\d\.\s]+,\d{2}/) || [])[0] || "";
+              const cleanPrice = this.extractPrice(priceText);
+
+              return { contactInfo: phone, price: cleanPrice };
             }, { visibleBrowser: criteria.visibleBrowser });
 
             if (contactInfo) {
               ad.contactInfo = contactInfo;
+            }
+            if (!ad.price && price) {
+              ad.price = price;
             }
           } catch (e) {
             console.error(`[OLX] Failed to deep scrape ${ad.url}`);
@@ -126,10 +142,21 @@ export class OlxScraper extends BaseScraper {
           const cardParent = $element.closest('.olx-adcard__topbody, section, li');
           const fullText = cardParent.text() || $element.text();
 
-          // Extract price
-          let priceText = $element.find('.olx-adcard__price, [aria-label*="Preço"]').text() || "";
+          // Extract price with multiple fallbacks
+          let priceText = $element.find('.olx-adcard__price, [aria-label*="Preço"], [data-testid=\"ad-price\"]').text() || "";
           if (!priceText) priceText = cardParent.find('h3').text() || "";
-          if (!priceText) priceText = cardParent.find('*:contains("R$")').last().text() || "";
+          if (!priceText) priceText = cardParent.find('*:contains(\"R$\")').last().text() || "";
+          if (!priceText) {
+            const ldjson =
+              cardParent.find('script[type=\"application/ld+json\"]').html() ||
+              $element.find('script[type=\"application/ld+json\"]').html();
+            if (ldjson) {
+              try {
+                const data = JSON.parse(ldjson);
+                if (data?.offers?.price) priceText = String(data.offers.price);
+              } catch {}
+            }
+          }
           const price = this.extractPrice(priceText);
 
           // Extract location (naive matching for now)

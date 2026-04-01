@@ -12,18 +12,23 @@ export class WebmotorsScraper extends BaseScraper {
 
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
+      const deepScrape = criteria.deepScrape !== false; // default true
+      const maxDeep = criteria.maxDeepScrape ?? 8;
+
       const searchUrl = this.buildSearchUrl(criteria);
       const html = await this.fetchWithRetry(searchUrl, { visibleBrowser: criteria.visibleBrowser });
       let ads = this.parseAds(html, criteria);
 
-      if (criteria.deepScrape && ads.length > 0) {
-        console.log(`[Webmotors] Deep scraping ${ads.length} ads for contacts...`);
-        for (let i = 0; i < ads.length; i++) {
+      if (deepScrape && ads.length > 0) {
+        const slice = ads.slice(0, maxDeep);
+        console.log(`[Webmotors] Deep scraping ${slice.length}/${ads.length} ads for contacts...`);
+        for (let i = 0; i < slice.length; i++) {
           const ad = ads[i];
           try {
             console.log(`[Webmotors] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
             const contactInfo = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
+              await this.humanLikeDelay(1200, 2200);
 
               // Try to find and click the contact button on Webmotors
               const btnRegex = /(Ver telefone|WhatsApp|Mensagem)/i;
