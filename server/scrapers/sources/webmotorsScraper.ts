@@ -18,9 +18,12 @@ export class WebmotorsScraper extends BaseScraper {
       const searchUrl = this.buildSearchUrl(criteria);
       const html = await this.fetchWithRetry(searchUrl, { visibleBrowser: criteria.visibleBrowser });
       let ads = this.parseAds(html, criteria);
+      if (criteria.maxAds) {
+        ads = ads.slice(0, criteria.maxAds);
+      }
 
       if (deepScrape && ads.length > 0) {
-        const slice = ads.slice(0, maxDeep);
+        const slice = ads.slice(0, Math.min(maxDeep, ads.length));
         console.log(`[Webmotors] Deep scraping ${slice.length}/${ads.length} ads for contacts...`);
         for (let i = 0; i < slice.length; i++) {
           const ad = ads[i];
