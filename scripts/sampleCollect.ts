@@ -35,6 +35,7 @@ async function main() {
     deepScrape: deep,
     maxDeepScrape: maxDeep,
     visibleBrowser: headful,
+    maxAds, // usado pelo registry para limitar por fonte
   };
 
   console.log("Iniciando coleta amostral com critérios:", criteria);

@@ -181,11 +181,16 @@ export class ScraperRegistry {
   async searchAll(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     const results: ScrapedVehicleAd[] = [];
     const enabledScrapers = this.getEnabledScrapers();
+    const perSourceLimit = criteria.maxAds || criteria.limit || undefined;
 
     for (const scraper of enabledScrapers) {
       try {
         const ads = await scraper.search(criteria);
-        results.push(...ads);
+        if (perSourceLimit) {
+          results.push(...ads.slice(0, perSourceLimit));
+        } else {
+          results.push(...ads);
+        }
       } catch (error) {
         console.error(
           `Error scraping ${scraper.getConfig().name}:`,
