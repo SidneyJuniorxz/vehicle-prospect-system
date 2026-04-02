@@ -4,8 +4,27 @@ import { ScraperRegistry } from "../server/scrapers/scraperRegistry";
 
 type Criteria = Record<string, any>;
 
+// Helpers to read env vars (PowerShell friendly)
+function envList(name: string, fallback: string[] = []): string[] {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) ? n : fallback;
+}
+
 async function main() {
   const registry = new ScraperRegistry();
+
+  const sourcesFilter = envList("SOURCES"); // ex: olx,webmotors
+  const maxAds = envInt("MAX_ADS", 20);
+  const headful = process.env.HEADFUL === "true";
+  const deep = process.env.DEEP !== "false";
+  const maxDeep = envInt("MAX_DEEP", 3);
 
   const criteria: Criteria = {
     state: "SP",
@@ -13,15 +32,23 @@ async function main() {
     maxYear: 2022,
     minPrice: 30000,
     maxPrice: 120000,
-    deepScrape: true,
-    maxDeepScrape: 3, // limitar para agilizar a amostra
-    visibleBrowser: false, // headless para ser rápido; passamos headful só em casos pontuais
+    deepScrape: deep,
+    maxDeepScrape: maxDeep,
+    visibleBrowser: headful,
   };
 
   console.log("Iniciando coleta amostral com critérios:", criteria);
+  if (sourcesFilter.length) {
+    console.log("Filtrando fontes:", sourcesFilter.join(", "));
+  }
+  console.log(`MAX_ADS=${maxAds} HEADFUL=${headful}`);
 
   const start = Date.now();
-  const ads = await registry.searchAll(criteria);
+  const allAds = await registry.searchAll(criteria);
+  const ads = allAds
+    .filter((ad) => (sourcesFilter.length ? sourcesFilter.includes(ad.source) : true))
+    .slice(0, maxAds);
+
   const duration = (Date.now() - start) / 1000;
 
   const bySource = new Map<
