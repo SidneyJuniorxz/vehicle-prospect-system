@@ -25,6 +25,9 @@ async function main() {
   const headful = process.env.HEADFUL === "true";
   const deep = process.env.DEEP !== "false";
   const maxDeep = envInt("MAX_DEEP", 3);
+  const quickScrape = process.env.QUICK === "true";
+  const directUrl = process.env.URL; // opcional: deep scrape direto em uma URL
+  const sellerType = process.env.SELLER_TYPE; // opcional: "individual" | "dealer" | "reseller"
 
   const criteria: Criteria = {
     state: "SP",
@@ -36,6 +39,8 @@ async function main() {
     maxDeepScrape: maxDeep,
     visibleBrowser: headful,
     maxAds, // usado pelo registry para limitar por fonte
+    quickScrape,
+    sellerType,
   };
 
   console.log("Iniciando coleta amostral com critérios:", criteria);
@@ -45,10 +50,18 @@ async function main() {
   console.log(`MAX_ADS=${maxAds} HEADFUL=${headful}`);
 
   const start = Date.now();
-  const allAds = await registry.searchAll(criteria);
-  const ads = allAds
-    .filter((ad) => (sourcesFilter.length ? sourcesFilter.includes(ad.source) : true))
-    .slice(0, maxAds);
+  let ads: any[] = [];
+
+  if (directUrl) {
+    // Deep scrape direto em uma URL (fonte inferida por host)
+    const source = directUrl.includes("olx") ? "olx" : directUrl.includes("webmotors") ? "webmotors" : "manual";
+    ads = [{ source, url: directUrl, title: "URL manual" }];
+  } else {
+    const allAds = await registry.searchAll(criteria);
+    ads = allAds
+      .filter((ad) => (sourcesFilter.length ? sourcesFilter.includes(ad.source) : true))
+      .slice(0, maxAds);
+  }
 
   const duration = (Date.now() - start) / 1000;
 
