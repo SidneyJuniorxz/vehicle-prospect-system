@@ -12,6 +12,17 @@ export class WebmotorsScraper extends BaseScraper {
 
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
+      if (criteria.directUrl) {
+        const ad: ScrapedVehicleAd = {
+          externalId: this.extractIdFromUrl(criteria.directUrl),
+          source: this.config.source,
+          url: criteria.directUrl,
+          title: "Direct URL",
+        };
+        await this.deepScrapeAds([ad], criteria);
+        return [ad];
+      }
+
       const deepScrape = criteria.deepScrape !== false; // default true
       const maxDeep = criteria.maxDeepScrape ?? 8;
 
@@ -21,70 +32,13 @@ export class WebmotorsScraper extends BaseScraper {
       if (criteria.maxAds) {
         ads = ads.slice(0, criteria.maxAds);
       }
+      if (criteria.sellerType) {
+        ads = ads.filter((a) => a.sellerType === criteria.sellerType);
+      }
 
       if (deepScrape && ads.length > 0) {
         const slice = ads.slice(0, Math.min(maxDeep, ads.length));
-        console.log(`[Webmotors] Deep scraping ${slice.length}/${ads.length} ads for contacts...`);
-        for (let i = 0; i < slice.length; i++) {
-          const ad = ads[i];
-          try {
-            console.log(`[Webmotors] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
-            const contactInfo = await this.runInBrowser(ad.url, async (page) => {
-              await page.waitForLoadState('domcontentloaded');
-              await page.waitForLoadState('networkidle').catch(() => {});
-              await this.humanLikeDelay(criteria.quickScrape ? 600 : 1800, criteria.quickScrape ? 1200 : 3200);
-
-              // Scroll para acionar lazy/modais
-              await page.mouse.wheel(0, 800).catch(() => {});
-              await this.humanLikeDelay(800, 1400);
-
-              // Try to find and click the contact button on Webmotors
-              const btnRegex = /(Ver telefone|Telefone|WhatsApp|Mensagem|Mostrar telefone)/i;
-              const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
-                || await page.getByText(btnRegex).first().catch(() => null);
-
-              if (button) {
-                await button.click().catch((e: any) => console.log('Button click err:', e.message));
-                await this.humanLikeDelay(2000, 4000); // Wait for number/modal to reveal
-              }
-
-              const pageHtml = await page.content();
-              let phone = BaseScraper.extractPhoneNumbers(pageHtml);
-              if (!phone) {
-                const telHref = await page.locator('a[href^=\"tel:\"]').first().getAttribute('href').catch(() => "");
-                phone = BaseScraper.extractPhoneNumbers(telHref || "");
-              }
-              if (!phone) {
-                const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
-                phone = BaseScraper.extractPhoneNumbers(modalText || "");
-              }
-              // Price on detail page
-              let priceText =
-                (await page.locator('[data-testid=\"vehicle-info-price\"]').first().textContent().catch(() => "")) ||
-                (await page.locator('[data-testid*=\"price\"]').first().textContent().catch(() => "")) ||
-                (await page.locator('span:has-text(\"R$\")').first().textContent().catch(() => ""));
-              if (!priceText) {
-                const match = pageHtml.match(/R\\$\\s?[\\d\\.\\s]+,\\d{2}/);
-                priceText = match ? match[0] : "";
-              }
-              if (!ad.price) {
-                ad.price = this.extractPrice(priceText) || ad.price;
-              }
-              return phone;
-            }, {
-              visibleBrowser: criteria.visibleBrowser,
-              userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-              viewport: { width: 412, height: 915 },
-              fast: criteria.quickScrape,
-            });
-
-            if (contactInfo) {
-              ad.contactInfo = contactInfo;
-            }
-          } catch (e) {
-            console.error(`[Webmotors] Failed to deep scrape ${ad.url}`);
-          }
-        }
+        await this.deepScrapeAds(slice, criteria);
       }
 
       console.log(`[Webmotors] Found ${ads.length} ads`);
@@ -92,6 +46,71 @@ export class WebmotorsScraper extends BaseScraper {
     } catch (error) {
       console.error("[Webmotors] Scraper error:", error);
       return [];
+    }
+  }
+
+  private async deepScrapeAds(ads: ScrapedVehicleAd[], criteria: any) {
+    console.log(`[Webmotors] Deep scraping ${ads.length} ads for contacts...`);
+    for (let i = 0; i < ads.length; i++) {
+      const ad = ads[i];
+      try {
+        console.log(`[Webmotors] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
+        const contactInfo = await this.runInBrowser(ad.url, async (page) => {
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForLoadState('networkidle').catch(() => {});
+          await this.humanLikeDelay(criteria.quickScrape ? 600 : 1800, criteria.quickScrape ? 1200 : 3200);
+
+          // Scroll para acionar lazy/modais
+          await page.mouse.wheel(0, 800).catch(() => {});
+          await this.humanLikeDelay(800, 1400);
+
+          // Try to find and click the contact button on Webmotors
+          const btnRegex = /(Ver telefone|Telefone|WhatsApp|Mensagem|Mostrar telefone)/i;
+          const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
+            || await page.getByText(btnRegex).first().catch(() => null);
+
+          if (button) {
+            await button.click().catch((e: any) => console.log('Button click err:', e.message));
+            await this.humanLikeDelay(2000, 4000); // Wait for number/modal to reveal
+          }
+
+          const pageHtml = await page.content();
+          let phone = BaseScraper.extractPhoneNumbers(pageHtml);
+          if (!phone) {
+            const telHref = await page.locator('a[href^=\"tel:\"]').first().getAttribute('href').catch(() => "");
+            phone = BaseScraper.extractPhoneNumbers(telHref || "");
+          }
+          if (!phone) {
+            const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
+            phone = BaseScraper.extractPhoneNumbers(modalText || "");
+          }
+          // Price on detail page
+          let priceText =
+            (await page.locator('[data-testid=\"vehicle-info-price\"]').first().textContent().catch(() => "")) ||
+            (await page.locator('[data-testid*=\"price\"]').first().textContent().catch(() => "")) ||
+            (await page.locator('span:has-text(\"R$\")').first().textContent().catch(() => ""));
+          if (!priceText) {
+            const match = pageHtml.match(/R\\$\\s?[\\d\\.\\s]+,\\d{2}/);
+            priceText = match ? match[0] : "";
+          }
+          if (!ad.price) {
+            ad.price = this.extractPrice(priceText) || ad.price;
+          }
+          return phone;
+        }, {
+          visibleBrowser: criteria.visibleBrowser,
+          userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+          viewport: { width: 412, height: 915 },
+          fast: criteria.quickScrape,
+          timeoutMs: 20000,
+        });
+
+        if (contactInfo) {
+          ad.contactInfo = contactInfo;
+        }
+      } catch (e) {
+        console.error(`[Webmotors] Failed to deep scrape ${ad.url}`);
+      }
     }
   }
 

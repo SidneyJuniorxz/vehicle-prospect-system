@@ -12,6 +12,18 @@ export class OlxScraper extends BaseScraper {
 
   async search(criteria: Record<string, any>): Promise<ScrapedVehicleAd[]> {
     try {
+      // Direct URL mode: deep-scrape a single ad without search
+      if (criteria.directUrl) {
+        const ad: ScrapedVehicleAd = {
+          externalId: this.extractIdFromUrl(criteria.directUrl),
+          source: this.config.source,
+          url: criteria.directUrl,
+          title: "Direct URL",
+        };
+        await this.deepScrapeAds([ad], criteria);
+        return [ad];
+      }
+
       const deepScrape = criteria.deepScrape !== false; // default: true
       const maxDeep = criteria.maxDeepScrape ?? 10;
 
@@ -21,68 +33,13 @@ export class OlxScraper extends BaseScraper {
       if (criteria.maxAds) {
         ads = ads.slice(0, criteria.maxAds);
       }
+      if (criteria.sellerType) {
+        ads = ads.filter((a) => a.sellerType === criteria.sellerType);
+      }
 
       if (deepScrape && ads.length > 0) {
         const slice = ads.slice(0, Math.min(maxDeep, ads.length));
-        console.log(`[OLX] Deep scraping ${slice.length}/${ads.length} ads for price/contact...`);
-        for (let i = 0; i < slice.length; i++) {
-          const ad = ads[i];
-          try {
-            console.log(`[OLX] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
-            const { contactInfo, price } = await this.runInBrowser(ad.url, async (page) => {
-              await page.waitForLoadState('domcontentloaded');
-              await page.waitForLoadState('networkidle').catch(() => {});
-              await this.humanLikeDelay(1800, 3200);
-
-              // Pequeno scroll para simular humano e carregar lazy content
-              await page.mouse.wheel(0, 600).catch(() => {});
-              await this.humanLikeDelay(800, 1400);
-
-              // Try to find and click the contact button
-              const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato|Falar com vendedor)/i;
-              const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
-                || await page.getByText(btnRegex).first().catch(() => null);
-
-              if (button) {
-                await button.click().catch((e: any) => console.log('Button click err:', e.message));
-                await this.humanLikeDelay(2000, 4000); // Wait for the number to reveal
-              }
-
-              const pageHtml = await page.content();
-              let phone = BaseScraper.extractPhoneNumbers(pageHtml);
-              if (!phone) {
-                // tel: links
-                const telHref = await page.locator('a[href^="tel:"]').first().getAttribute('href').catch(() => "");
-                phone = BaseScraper.extractPhoneNumbers(telHref || "");
-              }
-              if (!phone) {
-                const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
-                phone = BaseScraper.extractPhoneNumbers(modalText || "");
-              }
-
-              // Robust price extraction on the ad page
-              let priceText = await page.locator("[data-testid='ad-price']").first().textContent().catch(() => "");
-              if (!priceText) priceText = await page.locator("span:has-text('R$')").first().textContent().catch(() => "");
-              if (!priceText) priceText = (pageHtml.match(/R\$\s?[\d\.\s]+,\d{2}/) || [])[0] || "";
-              const cleanPrice = this.extractPrice(priceText);
-
-              return { contactInfo: phone, price: cleanPrice };
-            }, {
-              visibleBrowser: criteria.visibleBrowser,
-              userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-              viewport: { width: 412, height: 915 },
-            });
-
-            if (contactInfo) {
-              ad.contactInfo = contactInfo;
-            }
-            if (!ad.price && price) {
-              ad.price = price;
-            }
-          } catch (e) {
-            console.error(`[OLX] Failed to deep scrape ${ad.url}`);
-          }
-        }
+        await this.deepScrapeAds(slice, criteria);
       }
 
       console.log(`[OLX] Found ${ads.length} ads`);
@@ -90,6 +47,70 @@ export class OlxScraper extends BaseScraper {
     } catch (error) {
       console.error("[OLX] Scraper error:", error);
       return [];
+    }
+  }
+
+  private async deepScrapeAds(ads: ScrapedVehicleAd[], criteria: any) {
+    console.log(`[OLX] Deep scraping ${ads.length} ads for price/contact...`);
+    for (let i = 0; i < ads.length; i++) {
+      const ad = ads[i];
+      try {
+        console.log(`[OLX] Deep scraping ${i + 1}/${ads.length}: ${ad.url}`);
+        const { contactInfo, price } = await this.runInBrowser(ad.url, async (page) => {
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForLoadState('networkidle').catch(() => {});
+          await this.humanLikeDelay(criteria.quickScrape ? 600 : 1800, criteria.quickScrape ? 1200 : 3200);
+
+          // Pequeno scroll para simular humano e carregar lazy content
+          await page.mouse.wheel(0, 600).catch(() => {});
+          await this.humanLikeDelay(800, 1400);
+
+          // Try to find and click the contact button
+          const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato|Falar com vendedor)/i;
+          const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
+            || await page.getByText(btnRegex).first().catch(() => null);
+
+          if (button) {
+            await button.click().catch((e: any) => console.log('Button click err:', e.message));
+            await this.humanLikeDelay(2000, 4000); // Wait for the number to reveal
+          }
+
+          const pageHtml = await page.content();
+          let phone = BaseScraper.extractPhoneNumbers(pageHtml);
+          if (!phone) {
+            // tel: links
+            const telHref = await page.locator('a[href^="tel:"]').first().getAttribute('href').catch(() => "");
+            phone = BaseScraper.extractPhoneNumbers(telHref || "");
+          }
+          if (!phone) {
+            const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
+            phone = BaseScraper.extractPhoneNumbers(modalText || "");
+          }
+
+          // Robust price extraction on the ad page
+          let priceText = await page.locator("[data-testid='ad-price']").first().textContent().catch(() => "");
+          if (!priceText) priceText = await page.locator("span:has-text('R$')").first().textContent().catch(() => "");
+          if (!priceText) priceText = (pageHtml.match(/R\$\s?[\d\.\s]+,\d{2}/) || [])[0] || "";
+          const cleanPrice = this.extractPrice(priceText);
+
+          return { contactInfo: phone, price: cleanPrice };
+        }, {
+          visibleBrowser: criteria.visibleBrowser,
+          userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+          viewport: { width: 412, height: 915 },
+          fast: criteria.quickScrape,
+          timeoutMs: 20000,
+        });
+
+        if (contactInfo) {
+          ad.contactInfo = contactInfo;
+        }
+        if (!ad.price && price) {
+          ad.price = price;
+        }
+      } catch (e) {
+        console.error(`[OLX] Failed to deep scrape ${ad.url}`);
+      }
     }
   }
 
