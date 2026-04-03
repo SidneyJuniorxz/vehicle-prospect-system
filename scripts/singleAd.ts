@@ -34,12 +34,15 @@ async function main() {
   await page.waitForTimeout(1200);
 
   const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato|Falar com vendedor)/i;
-  const button = await page
-    .getByRole("button", { name: btnRegex })
-    .first()
-    .catch(() => null)
-    .then((b: any) => b || page.getByText(btnRegex).first().catch(() => null))
-    .catch(() => null);
+  let button: any = null;
+  try {
+    button = await page.getByRole("button", { name: btnRegex }).first();
+  } catch {}
+  if (!button) {
+    try {
+      button = await page.getByText(btnRegex).first();
+    } catch {}
+  }
 
   if (button) {
     console.log("Botão de telefone encontrado, clicando...");
