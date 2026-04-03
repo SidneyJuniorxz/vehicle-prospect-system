@@ -54,13 +54,32 @@ async function main() {
 
   if (directUrl) {
     // Deep scrape direto em uma URL (fonte inferida por host)
-    const source = directUrl.includes("olx") ? "olx" : directUrl.includes("webmotors") ? "webmotors" : "manual";
-    ads = [{ source, url: directUrl, title: "URL manual" }];
+    const source = directUrl.includes("olx")
+      ? "olx"
+      : directUrl.includes("webmotors")
+      ? "webmotors"
+      : "manual";
+    ads = [{ source, url: directUrl, title: "URL manual", directUrl: true }];
   } else {
     const allAds = await registry.searchAll(criteria);
     ads = allAds
       .filter((ad) => (sourcesFilter.length ? sourcesFilter.includes(ad.source) : true))
       .slice(0, maxAds);
+  }
+
+  // Se for URL direta, chamar deep scrape via scraper correspondente
+  if (directUrl && ads.length === 1 && ads[0].source !== "manual") {
+    const scraper = registry.getScraper(ads[0].source);
+    if (scraper) {
+      console.log(`Executando deep scrape direto na URL (${ads[0].source})...`);
+      // Passa critério com flags de rápido/headful
+      await (scraper as any).deepScrapeAds?.(ads, {
+        visibleBrowser: headful,
+        quickScrape,
+        deepScrape: true,
+        maxDeepScrape: 1,
+      });
+    }
   }
 
   const duration = (Date.now() - start) / 1000;
