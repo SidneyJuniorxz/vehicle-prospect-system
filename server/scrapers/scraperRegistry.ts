@@ -41,7 +41,7 @@ export class ScraperRegistry {
         name: "Mercado Livre",
         source: "mercado_livre",
         baseUrl: "https://www.mercadolivre.com.br",
-        enabled: true,
+        enabled: false, // desabilitado por padrão até termos contato/preço confiáveis
         minDelayMs: 2000,
         maxDelayMs: 5000,
         timeout: 15000,
@@ -71,7 +71,7 @@ export class ScraperRegistry {
         name: "iCarros",
         source: "icarros",
         baseUrl: "https://www.icarros.com.br",
-        enabled: true,
+        enabled: false, // desabilitado por padrão até revisão
         minDelayMs: 2000,
         maxDelayMs: 5000,
         timeout: 15000,
@@ -86,7 +86,7 @@ export class ScraperRegistry {
         name: "SóCarrão",
         source: "socarrao",
         baseUrl: "https://www.socarrao.com.br",
-        enabled: true,
+        enabled: false, // desabilitado por padrão até revisão
         minDelayMs: 2000,
         maxDelayMs: 5000,
         timeout: 15000,
