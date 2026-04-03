@@ -67,7 +67,11 @@ export class OlxScraper extends BaseScraper {
               const cleanPrice = this.extractPrice(priceText);
 
               return { contactInfo: phone, price: cleanPrice };
-            }, { visibleBrowser: criteria.visibleBrowser });
+            }, {
+              visibleBrowser: criteria.visibleBrowser,
+              userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+              viewport: { width: 412, height: 915 },
+            });
 
             if (contactInfo) {
               ad.contactInfo = contactInfo;

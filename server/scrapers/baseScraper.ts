@@ -185,7 +185,7 @@ export abstract class BaseScraper {
   protected async runInBrowser<T>(
     url: string,
     action: (page: any) => Promise<T>,
-    options: { visibleBrowser?: boolean } = {},
+    options: { visibleBrowser?: boolean; userAgent?: string; viewport?: { width: number; height: number } } = {},
     retries: number = 0
   ): Promise<T> {
     try {
@@ -204,8 +204,8 @@ export abstract class BaseScraper {
 
       try {
         const context = await browser.newContext({
-          userAgent: this.getRandomUserAgent(),
-          viewport: { width: 1366, height: 768 },
+          userAgent: options.userAgent || this.getRandomUserAgent(),
+          viewport: options.viewport || { width: 1366, height: 768 },
           hasTouch: false,
         });
 
