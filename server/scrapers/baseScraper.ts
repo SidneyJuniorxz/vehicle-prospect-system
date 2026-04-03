@@ -185,12 +185,20 @@ export abstract class BaseScraper {
   protected async runInBrowser<T>(
     url: string,
     action: (page: any) => Promise<T>,
-    options: { visibleBrowser?: boolean; userAgent?: string; viewport?: { width: number; height: number } } = {},
+    options: {
+      visibleBrowser?: boolean;
+      userAgent?: string;
+      viewport?: { width: number; height: number };
+      fast?: boolean;
+      timeoutMs?: number;
+    } = {},
     retries: number = 0
   ): Promise<T> {
     try {
-      await this.respectDelay();
-      await this.humanLikeDelay(1500, 3000);
+      if (!options.fast) {
+        await this.respectDelay();
+        await this.humanLikeDelay(1500, 3000);
+      }
 
       const browser: Browser = await chromium.launch({
         headless: !options.visibleBrowser,
@@ -210,16 +218,26 @@ export abstract class BaseScraper {
         });
 
         const page = await context.newPage();
+        const navTimeout = options.timeoutMs ?? this.config.timeout ?? 15000;
+        page.setDefaultNavigationTimeout(navTimeout);
+        page.setDefaultTimeout(navTimeout);
 
-        await page.goto(url, {
-          waitUntil: 'commit',
-          timeout: this.config.timeout
-        });
-
-        const result = await action(page);
+        const result = await Promise.race([
+          (async () => {
+            await page.goto(url, {
+              waitUntil: 'commit',
+              timeout: navTimeout
+            });
+            const r = await action(page);
+            return r;
+          })(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`runInBrowser timeout after ${navTimeout}ms`)), navTimeout + 2000)
+          ),
+        ]);
 
         await browser.close();
-        return result;
+        return result as T;
       } catch (innerError) {
         await browser.close();
         throw innerError;
