@@ -32,7 +32,7 @@ export class WebmotorsScraper extends BaseScraper {
             const contactInfo = await this.runInBrowser(ad.url, async (page) => {
               await page.waitForLoadState('domcontentloaded');
               await page.waitForLoadState('networkidle').catch(() => {});
-              await this.humanLikeDelay(1800, 3200);
+              await this.humanLikeDelay(criteria.quickScrape ? 600 : 1800, criteria.quickScrape ? 1200 : 3200);
 
               // Scroll para acionar lazy/modais
               await page.mouse.wheel(0, 800).catch(() => {});
@@ -61,6 +61,7 @@ export class WebmotorsScraper extends BaseScraper {
               // Price on detail page
               let priceText =
                 (await page.locator('[data-testid=\"vehicle-info-price\"]').first().textContent().catch(() => "")) ||
+                (await page.locator('[data-testid*=\"price\"]').first().textContent().catch(() => "")) ||
                 (await page.locator('span:has-text(\"R$\")').first().textContent().catch(() => ""));
               if (!priceText) {
                 const match = pageHtml.match(/R\\$\\s?[\\d\\.\\s]+,\\d{2}/);
@@ -74,6 +75,7 @@ export class WebmotorsScraper extends BaseScraper {
               visibleBrowser: criteria.visibleBrowser,
               userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
               viewport: { width: 412, height: 915 },
+              fast: criteria.quickScrape,
             });
 
             if (contactInfo) {
