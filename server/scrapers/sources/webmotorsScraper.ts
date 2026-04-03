@@ -51,15 +51,30 @@ export class WebmotorsScraper extends BaseScraper {
               const pageHtml = await page.content();
               let phone = BaseScraper.extractPhoneNumbers(pageHtml);
               if (!phone) {
-                const telHref = await page.locator('a[href^="tel:"]').first().getAttribute('href').catch(() => "");
+                const telHref = await page.locator('a[href^=\"tel:\"]').first().getAttribute('href').catch(() => "");
                 phone = BaseScraper.extractPhoneNumbers(telHref || "");
               }
               if (!phone) {
                 const modalText = await page.locator('text=/\\(?\\d{2}\\)?\\s?9?\\d{4}[\\s-]?\\d{4}/').first().textContent().catch(() => "");
                 phone = BaseScraper.extractPhoneNumbers(modalText || "");
               }
+              // Price on detail page
+              let priceText =
+                (await page.locator('[data-testid=\"vehicle-info-price\"]').first().textContent().catch(() => "")) ||
+                (await page.locator('span:has-text(\"R$\")').first().textContent().catch(() => ""));
+              if (!priceText) {
+                const match = pageHtml.match(/R\\$\\s?[\\d\\.\\s]+,\\d{2}/);
+                priceText = match ? match[0] : "";
+              }
+              if (!ad.price) {
+                ad.price = this.extractPrice(priceText) || ad.price;
+              }
               return phone;
-            }, { visibleBrowser: criteria.visibleBrowser });
+            }, {
+              visibleBrowser: criteria.visibleBrowser,
+              userAgent: "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+              viewport: { width: 412, height: 915 },
+            });
 
             if (contactInfo) {
               ad.contactInfo = contactInfo;
