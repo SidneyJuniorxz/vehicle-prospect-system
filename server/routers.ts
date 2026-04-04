@@ -135,11 +135,19 @@ export const appRouter = router({
 
         const results = await query;
         
-        // Fallback: If no leads found, and no filters are applied, show all ads as "New" leads
-        if (results.length === 0 && !input.priority && !input.status && !input.brand && !input.model && !input.sellerType) {
-            const allAds = await db.select().from(vehicleAds).orderBy(desc(vehicleAds.collectedAt)).limit(input.limit).offset(input.offset);
+        // Fallback robusto: Se não houver nenhum Lead real encontrado, 
+        // e não estivermos fazendo uma busca específica por marca/modelo,
+        // vamos mostrar os Anúncios mais recentes como se fossem leads novos.
+        if (results.length === 0 && !input.brand && !input.model) {
+            console.log("[Leads Router] Tabela de leads vazia ou filtros sem retorno. Buscando anúncios brutos...");
+            const allAds = await db.select()
+                .from(vehicleAds)
+                .orderBy(desc(vehicleAds.collectedAt))
+                .limit(input.limit)
+                .offset(input.offset);
+                
             return allAds.map(ad => ({
-                id: -ad.id, // Negative ID to indicate it's a virtual lead
+                id: -ad.id, 
                 adId: ad.id,
                 score: "0.00",
                 priority: "low",
