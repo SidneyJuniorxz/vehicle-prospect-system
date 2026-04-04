@@ -28,7 +28,7 @@ async function main() {
   const quickScrape = process.env.QUICK === "true";
   const directUrl = process.env.URL; // opcional: deep scrape direto em uma URL
   const sellerType = process.env.SELLER_TYPE; // opcional: "individual" | "dealer" | "reseller"
-  const timeoutMs = envInt("TIMEOUT_MS", 30000);
+  const timeoutMs = envInt("TIMEOUT_MS", 60000);
 
   const criteria: Criteria = {
     state: "SP",

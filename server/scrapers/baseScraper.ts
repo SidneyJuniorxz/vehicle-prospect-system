@@ -218,7 +218,7 @@ export abstract class BaseScraper {
         });
 
         const page = await context.newPage();
-        const navTimeout = options.timeoutMs ?? this.config.timeout ?? 15000;
+        const navTimeout = options.timeoutMs ?? this.config.timeout ?? 60000; // default 60s for debugging/headful
         page.setDefaultNavigationTimeout(navTimeout);
         page.setDefaultTimeout(navTimeout);
 
