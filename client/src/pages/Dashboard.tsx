@@ -15,6 +15,7 @@ import { useLocation } from "wouter";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useEffect, useRef } from "react";
+import { Input } from "@/components/ui/input";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -52,6 +53,8 @@ export default function Dashboard() {
   const [filterSellerType, setFilterSellerType] = useState("");
   const [autoPostprocess, setAutoPostprocess] = useState(true);
   const autoRunRef = useRef(false);
+  const [postBatchSize, setPostBatchSize] = useState(2);
+  const [postTimeout, setPostTimeout] = useState(90000);
 
   const leadsQuery = trpc.leads.list.useQuery({
     priority,
@@ -182,7 +185,7 @@ export default function Dashboard() {
     if (needsRun && !runPostprocess.isLoading && !autoRunRef.current) {
       autoRunRef.current = true;
       runPostprocess.mutate(
-        { batchSize: 2, timeoutMs: 90000 },
+        { batchSize: postBatchSize, timeoutMs: postTimeout },
         {
           onSettled: () => {
             autoRunRef.current = false;
@@ -471,11 +474,11 @@ export default function Dashboard() {
           </Card>
 
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Novos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Novos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
                 {dashboardMetrics.data?.totals.new24h ?? statsQuery.data?.new ?? 0}
               </div>
             </CardContent>
@@ -587,23 +590,41 @@ export default function Dashboard() {
             <CardTitle>Completude (dados reais)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-3">
-              <div className="flex justify-between text-xs">
-                <span>Preço preenchido</span>
-                <span>{dashboardMetrics.data?.completeness.pricePct ?? 0}%</span>
+            <div className="flex items-center gap-4">
+              <Donut value={dashboardMetrics.data?.completeness.pricePct ?? 0} label="Preço" />
+              <Donut value={dashboardMetrics.data?.completeness.contactPct ?? 0} label="Contato" color="#16a34a" />
+              <div className="flex flex-col gap-2 text-xs w-full">
+                <div className="flex justify-between">
+                  <span>Batch pós-processo</span>
+                  <Input
+                    className="h-8 w-16"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={postBatchSize}
+                    onChange={(e) => setPostBatchSize(parseInt(e.target.value || "1", 10))}
+                  />
+                </div>
+                <div className="flex justify-between">
+                  <span>Timeout (ms)</span>
+                  <Input
+                    className="h-8 w-24"
+                    type="number"
+                    min={10000}
+                    max={180000}
+                    value={postTimeout}
+                    onChange={(e) => setPostTimeout(parseInt(e.target.value || "90000", 10))}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch id="auto-postprocess" checked={autoPostprocess} onCheckedChange={setAutoPostprocess} />
+                  <label htmlFor="auto-postprocess">Rodar pós-processo até 95%</label>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Alvo mínimo: 95%. Pós-processamento roda em segundo plano enquanto abaixo do alvo.
+                </p>
               </div>
-              <Progress value={dashboardMetrics.data?.completeness.pricePct ?? 0} className="h-2" />
             </div>
-            <div className="mb-2">
-              <div className="flex justify-between text-xs">
-                <span>Contato preenchido</span>
-                <span>{dashboardMetrics.data?.completeness.contactPct ?? 0}%</span>
-              </div>
-              <Progress value={dashboardMetrics.data?.completeness.contactPct ?? 0} className="h-2" />
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Alvo mínimo: 95%. Pós-processamento roda em lotes até atingir o alvo.
-            </p>
           </CardContent>
         </Card>
 
@@ -703,5 +724,33 @@ export default function Dashboard() {
         </Card>
       </div>
     </DashboardLayout>
+  );
+}
+
+function Donut({ value, label, color = "#2563eb" }: { value: number; label: string; color?: string }) {
+  const radius = 24;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, value));
+  const offset = circumference - (clamped / 100) * circumference;
+  return (
+    <div className="flex flex-col items-center">
+      <svg width="64" height="64">
+        <circle cx="32" cy="32" r={radius} stroke="#e5e7eb" strokeWidth="8" fill="none" />
+        <circle
+          cx="32"
+          cy="32"
+          r={radius}
+          stroke={color}
+          strokeWidth="8"
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform="rotate(-90 32 32)"
+        />
+      </svg>
+      <div className="text-sm font-semibold mt-1">{clamped}%</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </div>
   );
 }
