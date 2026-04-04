@@ -28,6 +28,7 @@ async function main() {
   const quickScrape = process.env.QUICK === "true";
   const directUrl = process.env.URL; // opcional: deep scrape direto em uma URL
   const sellerType = process.env.SELLER_TYPE; // opcional: "individual" | "dealer" | "reseller"
+  const timeoutMs = envInt("TIMEOUT_MS", 30000);
 
   const criteria: Criteria = {
     state: "SP",
@@ -40,6 +41,7 @@ async function main() {
     visibleBrowser: headful,
     maxAds, // usado pelo registry para limitar por fonte
     quickScrape,
+    timeoutMs,
     sellerType,
   };
 
@@ -59,6 +61,9 @@ async function main() {
       : directUrl.includes("webmotors")
       ? "webmotors"
       : "manual";
+    // Força deep scrape headful e não-rápido para maximizar captura
+    criteria.visibleBrowser = true;
+    criteria.quickScrape = false;
     ads = [{ source, url: directUrl, title: "URL manual", directUrl: true }];
   } else {
     const allAds = await registry.searchAll(criteria);
