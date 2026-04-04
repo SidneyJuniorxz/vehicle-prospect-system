@@ -174,6 +174,7 @@ export class CollectionService {
               state: scrapedAd.state,
               sellerType: scrapedAd.sellerType,
               sellerName: scrapedAd.sellerName,
+              contactInfo: scrapedAd.contactInfo,
               description: scrapedAd.description,
               photoCount: scrapedAd.photoCount,
               photoUrls: scrapedAd.photoUrls ? JSON.stringify(scrapedAd.photoUrls) : undefined,
@@ -238,15 +239,13 @@ export class CollectionService {
             status: "new",
           });
 
-          result.leadsCreated++;
-
           if (scoringResult.priority === "high") {
             await createNotification({
               userId: options.userId,
               type: "high_priority",
               title: `Novo lead de alta prioridade: ${scrapedAd.title}`,
               message: `Score: ${scoringResult.score}. ${scoringResult.reasons.join(". ")}`,
-              leadId: (leadResult as any).insertId || (leadResult as any)[0],
+              leadId: (leadResult as any).insertId || (leadResult as any)[0]?.id || (leadResult as any)[0],
             });
           }
           // Auto-send WhatsApp if enabled and high priority
@@ -264,7 +263,7 @@ export class CollectionService {
                   .replace(/{{cidade}}/g, scrapedAd.city || "");
 
                 try {
-                  const leadId = (leadResult as any).insertId || (leadResult as any)[0];
+                  const leadId = (leadResult as any).insertId || (leadResult as any)[0]?.id || (leadResult as any)[0];
                   console.log(`[Collection] Auto-sending WhatsApp to ${scrapedAd.contactInfo} for lead ${leadId}`);
                   await bot.sendMessage(scrapedAd.contactInfo, message);
                   await updateLead(leadId, { status: "sent", contactedAt: new Date() });

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Search, Download, Play, Settings, XCircle, Info, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Search, Download, Play, Settings, XCircle, Info, CheckCircle2, AlertCircle, MessageSquare, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { Progress } from "@/components/ui/progress";
@@ -70,6 +70,10 @@ export default function Dashboard() {
     model: filterModel || undefined,
     sellerType: filterSellerType || undefined,
     limit: 100,
+  });
+
+  const { data: templates } = trpc.whatsapp.getTemplates.useQuery(undefined, {
+    staleTime: 1000 * 60 * 5, // 5 mins
   });
 
   const statsQuery = trpc.leads.stats.useQuery({
@@ -182,6 +186,40 @@ export default function Dashboard() {
 
   const handleParamChange = (field: string, value: string | boolean) => {
     setSearchParams(prev => ({ ...prev, [field]: value }));
+  };
+
+  const formatCurrency = (value: number | string | null | undefined) => {
+    if (!value) return "N/A";
+    const num = typeof value === "string" ? parseFloat(value) : value;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(num);
+  };
+
+  const generateWhatsAppLink = (lead: any) => {
+    const ad = lead.ad;
+    if (!ad?.contactInfo) return "#";
+
+    let text = `Olá! O anúncio do ${ad.title} ainda está disponível?`;
+
+    if (templates && lead.status) {
+      const tpl = templates.find(t => t.status === lead.status);
+      if (tpl && tpl.message) {
+        text = tpl.message
+          .replace(/{{veiculo}}/g, ad.title || "veículo")
+          .replace(/{{preco}}/g, formatCurrency(ad.price))
+          .replace(/{{ano}}/g, String(ad.year || ""))
+          .replace(/{{km}}/g, String(ad.mileage || ""))
+          .replace(/{{cidade}}/g, ad.city || "");
+      }
+    }
+
+    // Clean non-digits from contact info
+    const cleanNumber = ad.contactInfo.replace(/\D/g, "");
+    const finalNumber = cleanNumber.length <= 11 ? `55${cleanNumber}` : cleanNumber;
+
+    return `https://wa.me/${finalNumber}?text=${encodeURIComponent(text)}`;
   };
 
   useEffect(() => {
@@ -519,7 +557,7 @@ export default function Dashboard() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Total de Prospecções</CardTitle>
@@ -572,7 +610,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle>Filtros</CardTitle>
           </CardHeader>
-          <CardContent className="flex gap-4">
+          <CardContent className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <Select value={priority || "all"} onValueChange={(v) => setPriority(v === "all" ? undefined : v as any)}>
                 <SelectTrigger>
@@ -769,7 +807,7 @@ export default function Dashboard() {
                       <th className="text-left py-2 px-4">Preço</th>
                       <th className="text-left py-2 px-4">Score/Prioridade</th>
                       <th className="text-left py-2 px-4">Status</th>
-                      <th className="text-left py-2 px-4">Contato / Interação</th>
+                      <th className="text-left py-2 px-4">WhatsApp / Contato</th>
                       <th className="text-left py-2 px-4">Ações</th>
                     </tr>
                   </thead>
@@ -807,17 +845,29 @@ export default function Dashboard() {
                           </Badge>
                         </td>
                         <td className="py-2 px-4">
-                          <div className="text-xs">
+                          <div className="flex flex-col gap-2">
                             {lead.ad?.contactInfo ? (
-                              <a href={`https://wa.me/55${lead.ad.contactInfo}?text=Olá!`} target="_blank" rel="noreferrer" className="text-blue-600 font-medium flex items-center gap-1 hover:underline">
-                                {lead.ad.contactInfo}
-                              </a>
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white font-bold h-8"
+                                asChild
+                              >
+                                <a
+                                  href={generateWhatsAppLink(lead)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-1"
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                  Chamar no Whats
+                                </a>
+                              </Button>
                             ) : (
-                              <span className="text-gray-400 italic">Sem contato</span>
+                              <span className="text-gray-400 italic text-xs">Sem contato coletado</span>
                             )}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {lead.contactedAt ? `Interação: ${new Date(lead.contactedAt).toLocaleDateString()}` : 'Aberto'}
+                            <span className="text-[10px] text-gray-500">
+                              {lead.contactedAt ? `Último: ${new Date(lead.contactedAt).toLocaleDateString()}` : 'Aguardando'}
+                            </span>
                           </div>
                         </td>
                         <td className="py-2 px-4">
@@ -826,8 +876,11 @@ export default function Dashboard() {
                               <a href={`/leads/${lead.id}`}>Ver Detalhes</a>
                             </Button>
                             {lead.ad?.url && (
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={lead.ad.url} target="_blank" rel="noreferrer">Link Original</a>
+                              <Button variant="outline" size="sm" asChild className="h-7 text-[10px]">
+                                <a href={lead.ad.url} target="_blank" rel="noreferrer">
+                                  <ExternalLink className="w-3 h-3 mr-1" />
+                                  Abrir Site
+                                </a>
                               </Button>
                             )}
                           </div>

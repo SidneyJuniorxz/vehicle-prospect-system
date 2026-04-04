@@ -72,27 +72,35 @@ export const dashboardRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      return new Promise((resolve, reject) => {
-        const cmd = `pnpm tsx scripts/postprocess-contacts.ts`;
-        exec(
-          cmd,
-          {
-            cwd: process.cwd(),
-            env: {
-              ...process.env,
-              BATCH_SIZE: String(input.batchSize),
-              TIMEOUT_MS: String(input.timeoutMs),
-              POSTPROCESS_PRIORITY: input.priority,
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const cmd = `pnpm tsx scripts/postprocess-contacts.ts`;
+          exec(
+            cmd,
+            {
+              cwd: process.cwd(),
+              env: {
+                ...process.env,
+                DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:4263@localhost:5432/vehicle_prospect",
+                BATCH_SIZE: String(input.batchSize),
+                TIMEOUT_MS: String(input.timeoutMs),
+                POSTPROCESS_PRIORITY: input.priority,
+              },
             },
-          },
-          (error, stdout, stderr) => {
-          if (error) {
-            reject(new Error(stderr || error.message));
-          } else {
-            resolve({ ok: true, stdout });
-          }
-          }
-        );
-      });
+            (error, stdout, stderr) => {
+              if (error) {
+                console.error(`[Postprocess] Error: ${error.message}`);
+                console.error(`[Postprocess] Stderr: ${stderr}`);
+                reject(new Error(stderr || error.message));
+              } else {
+                resolve({ ok: true, stdout });
+              }
+            }
+          );
+        });
+        return result as { ok: boolean; stdout: string };
+      } catch (err: any) {
+        throw new Error(err.message || "Falha ao executar pós-processamento");
+      }
     }),
 });

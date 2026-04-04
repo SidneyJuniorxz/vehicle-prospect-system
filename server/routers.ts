@@ -134,6 +134,22 @@ export const appRouter = router({
           .offset(input.offset);
 
         const results = await query;
+        
+        // Fallback: If no leads found, and no filters are applied, show all ads as "New" leads
+        if (results.length === 0 && !input.priority && !input.status && !input.brand && !input.model && !input.sellerType) {
+            const allAds = await db.select().from(vehicleAds).orderBy(desc(vehicleAds.collectedAt)).limit(input.limit).offset(input.offset);
+            return allAds.map(ad => ({
+                id: -ad.id, // Negative ID to indicate it's a virtual lead
+                adId: ad.id,
+                score: "0.00",
+                priority: "low",
+                status: "new",
+                createdAt: ad.collectedAt,
+                updatedAt: ad.updatedAt,
+                ad: ad
+            }));
+        }
+
         return results.map(r => ({ ...r.lead, ad: r.ad }));
       }),
 
