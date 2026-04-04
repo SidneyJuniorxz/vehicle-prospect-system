@@ -2,6 +2,24 @@
 
 Um sistema completo de prospecção de anúncios de veículos que monitora múltiplas fontes, qualifica leads automaticamente e fornece um painel intuitivo para gestão de oportunidades comerciais.
 
+## Linux + Docker (Recomendado)
+
+Stack atual: **PostgreSQL** (nao MySQL).
+
+### Subir em Linux com Docker
+
+```bash
+docker compose up -d --build
+```
+
+- App: `http://localhost:3000`
+- Banco: `localhost:5432`
+
+### Guias oficiais do projeto
+
+- `LINUX_RUNBOOK.md` (subida e operacao Linux)
+- `AGENTS.md` (fluxo para agentes continuarem evolucao)
+- `.mcp.servers.example.json` (base MCP: filesystem/postgres/playwright)
 ## 🎯 Objetivo
 
 Criar uma base estruturada de oportunidades comerciais a partir de anúncios públicos de veículos, filtrando por critérios de interesse e priorizando os melhores leads para abordagem comercial posterior.
@@ -349,3 +367,4 @@ MIT
 ---
 
 **Desenvolvido com ❤️ para otimizar sua prospecção de veículos**
+

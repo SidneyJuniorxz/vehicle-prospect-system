@@ -1,27 +1,22 @@
-version: '3.8'
-
 services:
-  # MySQL Database
   db:
-    image: mysql:8.0
+    image: postgres:17
     container_name: vehicle_prospect_db
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
-      MYSQL_DATABASE: ${DB_NAME:-vehicle_prospect}
-      MYSQL_USER: ${DB_USER:-prospect_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-prospect_password}
+      POSTGRES_DB: ${POSTGRES_DB:-vehicle_prospect}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-4263}
     ports:
-      - "${DB_PORT:-3306}:3306"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - db_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vehicle_prospect}"]
+      interval: 10s
+      timeout: 5s
       retries: 10
-    networks:
-      - vehicle_prospect_network
+    restart: unless-stopped
 
-  # Vehicle Prospect System Application
   app:
     build:
       context: .
@@ -33,31 +28,12 @@ services:
     environment:
       NODE_ENV: production
       DEPLOYMENT_MODE: self-hosted
-      DATABASE_URL: mysql://${DB_USER:-prospect_user}:${DB_PASSWORD:-prospect_password}@db:3306/${DB_NAME:-vehicle_prospect}
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
       PORT: 3000
-      # Optional: Manus OAuth (if running in hybrid mode with Manus)
-      VITE_APP_ID: ${VITE_APP_ID:-}
-      OAUTH_SERVER_URL: ${OAUTH_SERVER_URL:-}
-      VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-4263}@db:5432/${POSTGRES_DB:-vehicle_prospect}
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
     ports:
       - "${APP_PORT:-3000}:3000"
-    volumes:
-      - ./logs:/app/logs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    networks:
-      - vehicle_prospect_network
     restart: unless-stopped
 
 volumes:
-  db_data:
-    driver: local
-
-networks:
-  vehicle_prospect_network:
-    driver: bridge
+  postgres_data:
