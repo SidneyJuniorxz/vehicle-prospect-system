@@ -108,8 +108,8 @@ export class WebmotorsScraper extends BaseScraper {
         if (contactInfo) {
           ad.contactInfo = contactInfo;
         }
-      } catch (e) {
-        console.error(`[Webmotors] Failed to deep scrape ${ad.url}`);
+      } catch (e:any) {
+        console.error(`[Webmotors] Failed to deep scrape ${ad.url}:`, e?.message || e);
       }
     }
   }

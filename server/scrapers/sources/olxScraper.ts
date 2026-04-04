@@ -108,8 +108,8 @@ export class OlxScraper extends BaseScraper {
         if (!ad.price && price) {
           ad.price = price;
         }
-      } catch (e) {
-        console.error(`[OLX] Failed to deep scrape ${ad.url}`);
+      } catch (e:any) {
+        console.error(`[OLX] Failed to deep scrape ${ad.url}:`, e?.message || e);
       }
     }
   }
