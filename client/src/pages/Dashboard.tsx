@@ -42,17 +42,20 @@ export default function Dashboard() {
     deepScrape: false,
     useLLM: false,
     autoSend: false,
+    sellerType: "",
   });
 
   const [filterBrand, setFilterBrand] = useState("");
   const [filterModel, setFilterModel] = useState("");
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [filterSellerType, setFilterSellerType] = useState("");
 
   const leadsQuery = trpc.leads.list.useQuery({
     priority,
     status,
     brand: filterBrand || undefined,
     model: filterModel || undefined,
+    sellerType: filterSellerType || undefined,
     limit: 100,
   });
 
@@ -236,6 +239,19 @@ export default function Dashboard() {
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Cidade (opcional)</label>
                       <Input placeholder="São Paulo" value={searchParams.city} onChange={(e) => handleParamChange('city', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Tipo de anunciante</label>
+                      <Select value={searchParams.sellerType || "all"} onValueChange={(v) => handleParamChange('sellerType', v === "all" ? "" : v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos</SelectItem>
+                          <SelectItem value="particular">Particular</SelectItem>
+                          <SelectItem value="profissional">Profissional</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
@@ -472,6 +488,18 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex-1">
+              <Select value={filterSellerType || "all"} onValueChange={(v) => setFilterSellerType(v === "all" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tipo de anunciante" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="particular">Particular</SelectItem>
+                  <SelectItem value="profissional">Profissional</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex-[1.5]">
               <Select value={filterBrand || "all"} onValueChange={(v) => setFilterBrand(v === "all" ? "" : v)}>
                 <SelectTrigger>
@@ -521,6 +549,31 @@ export default function Dashboard() {
               )}
               Exportar
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Completude (dados reais)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-3">
+              <div className="flex justify-between text-xs">
+                <span>Preço preenchido</span>
+                <span>{dashboardMetrics.data?.completeness.pricePct ?? 0}%</span>
+              </div>
+              <Progress value={dashboardMetrics.data?.completeness.pricePct ?? 0} className="h-2" />
+            </div>
+            <div className="mb-2">
+              <div className="flex justify-between text-xs">
+                <span>Contato preenchido</span>
+                <span>{dashboardMetrics.data?.completeness.contactPct ?? 0}%</span>
+              </div>
+              <Progress value={dashboardMetrics.data?.completeness.contactPct ?? 0} className="h-2" />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Alvo mínimo: 95%. Pós-processamento roda em lotes até atingir o alvo.
+            </p>
           </CardContent>
         </Card>
 
@@ -595,9 +648,16 @@ export default function Dashboard() {
                           </div>
                         </td>
                         <td className="py-2 px-4">
-                          <Button variant="ghost" size="sm" asChild>
-                            <a href={`/leads/${lead.id}`}>Ver Detalhes</a>
-                          </Button>
+                          <div className="flex flex-col gap-1">
+                            <Button variant="ghost" size="sm" asChild>
+                              <a href={`/leads/${lead.id}`}>Ver Detalhes</a>
+                            </Button>
+                            {lead.ad?.url && (
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={lead.ad.url} target="_blank" rel="noreferrer">Link Original</a>
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
