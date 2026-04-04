@@ -1,6 +1,7 @@
 import { randomInt } from "crypto";
 import { chromium } from 'playwright-extra';
 import { Browser } from 'playwright';
+import fs from "fs";
 // @ts-ignore
 import stealth from 'puppeteer-extra-plugin-stealth';
 
@@ -191,6 +192,7 @@ export abstract class BaseScraper {
       viewport?: { width: number; height: number };
       fast?: boolean;
       timeoutMs?: number;
+      storageStatePath?: string;
     } = {},
     retries: number = 0
   ): Promise<T> {
@@ -211,11 +213,15 @@ export abstract class BaseScraper {
       });
 
       try {
-        const context = await browser.newContext({
+        const contextOptions: any = {
           userAgent: options.userAgent || this.getRandomUserAgent(),
           viewport: options.viewport || { width: 1366, height: 768 },
           hasTouch: false,
-        });
+        };
+        if (options.storageStatePath && fs.existsSync(options.storageStatePath)) {
+          contextOptions.storageState = options.storageStatePath;
+        }
+        const context = await browser.newContext(contextOptions);
 
         const page = await context.newPage();
         const navTimeout = options.timeoutMs ?? this.config.timeout ?? 60000; // default 60s for debugging/headful

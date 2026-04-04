@@ -107,6 +107,7 @@ export class OlxScraper extends BaseScraper {
           viewport: { width: 412, height: 915 },
           fast: criteria.quickScrape,
           timeoutMs: criteria.timeoutMs ?? 45000,
+          storageStatePath: process.env.OLX_STORAGE || undefined,
         });
 
         if (contactInfo) {
