@@ -1,5 +1,6 @@
 import { BaseScraper, ScraperConfig, ScrapedVehicleAd } from "../baseScraper";
 import * as cheerio from "cheerio";
+import { ensureOlxLogin } from "../loginHelpers";
 
 /**
  * OLX Scraper
@@ -108,6 +109,7 @@ export class OlxScraper extends BaseScraper {
           fast: criteria.quickScrape,
           timeoutMs: criteria.timeoutMs ?? 45000,
           storageStatePath: process.env.OLX_STORAGE || undefined,
+          onAuthNeeded: ensureOlxLogin,
         });
 
         if (contactInfo) {

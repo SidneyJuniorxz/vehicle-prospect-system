@@ -193,6 +193,7 @@ export abstract class BaseScraper {
       fast?: boolean;
       timeoutMs?: number;
       storageStatePath?: string;
+      onAuthNeeded?: (page: any) => Promise<void>;
     } = {},
     retries: number = 0
   ): Promise<T> {
@@ -234,6 +235,13 @@ export abstract class BaseScraper {
               waitUntil: 'commit',
               timeout: navTimeout
             });
+            // Se foi passado um handler de login, chamar caso detecte página de login
+            if (options.onAuthNeeded) {
+              const href = page.url();
+              if (/\/account|login|signin/.test(href)) {
+                await options.onAuthNeeded(page);
+              }
+            }
             const r = await action(page);
             return r;
           })(),
