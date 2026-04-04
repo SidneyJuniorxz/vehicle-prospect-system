@@ -3,6 +3,9 @@ import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { Client } from "pg";
 import { BaseScraper } from "../server/scrapers/baseScraper";
+import { eq } from "drizzle-orm";
+import { getDb } from "../server/db";
+import { vehicleAds } from "../drizzle/schema";
 
 chromium.use(stealth());
 
@@ -26,11 +29,10 @@ async function run() {
 
   const { rows } = await client.query<AdRow>(
     `
-    select id, source, url
+    select id, source, url, price, contact_info
     from vehicle_ads
-    where (contact_info is null or contact_info = '')
-      or price is null
-    and source in ('olx','webmotors')
+    where source in ('olx','webmotors')
+      and (contact_info is null or contact_info = '' or price is null)
     order by id desc
     limit $1;
   `,
