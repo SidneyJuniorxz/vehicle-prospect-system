@@ -2,7 +2,9 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 import { leads, vehicleAds } from "../../drizzle/schema";
-import { and, gte, lte } from "drizzle-orm";
+import { gte } from "drizzle-orm";
+import { exec } from "child_process";
+import { z } from "zod";
 
 export const dashboardRouter = router({
   metrics: protectedProcedure.query(async () => {
@@ -60,4 +62,37 @@ export const dashboardRouter = router({
       },
     };
   }),
+
+  runPostprocessBatch: protectedProcedure
+    .input(
+      z.object({
+        batchSize: z.number().min(1).max(10).default(2),
+        timeoutMs: z.number().min(10000).max(180000).default(90000),
+        priority: z.enum(["low", "normal", "high"]).default("normal"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return new Promise((resolve, reject) => {
+        const cmd = `pnpm tsx scripts/postprocess-contacts.ts`;
+        exec(
+          cmd,
+          {
+            cwd: process.cwd(),
+            env: {
+              ...process.env,
+              BATCH_SIZE: String(input.batchSize),
+              TIMEOUT_MS: String(input.timeoutMs),
+              POSTPROCESS_PRIORITY: input.priority,
+            },
+          },
+          (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(stderr || error.message));
+          } else {
+            resolve({ ok: true, stdout });
+          }
+          }
+        );
+      });
+    }),
 });

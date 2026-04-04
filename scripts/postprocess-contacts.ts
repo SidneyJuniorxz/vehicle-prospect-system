@@ -3,9 +3,6 @@ import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { Client } from "pg";
 import { BaseScraper } from "../server/scrapers/baseScraper";
-import { eq } from "drizzle-orm";
-import { getDb } from "../server/db";
-import { vehicleAds } from "../drizzle/schema";
 
 chromium.use(stealth());
 
@@ -18,6 +15,7 @@ type AdRow = {
 async function run() {
   const batchSize = parseInt(process.env.BATCH_SIZE || "5", 10);
   const timeoutMs = parseInt(process.env.TIMEOUT_MS || "60000", 10);
+  const priority = (process.env.POSTPROCESS_PRIORITY || "normal").toLowerCase();
   const headless = process.env.HEADFUL !== "true";
 
   const client = new Client({
@@ -27,24 +25,30 @@ async function run() {
   });
   await client.connect();
 
+  const orderClause =
+    priority === "high"
+      ? "order by id desc"
+      : priority === "low"
+        ? "order by id asc"
+        : "order by case when (contact_info is null or contact_info = '') and price is null then 0 when (contact_info is null or contact_info = '') then 1 else 2 end, id desc";
+
   const { rows } = await client.query<AdRow>(
     `
     select id, source, url, price, contact_info
     from vehicle_ads
     where source in ('olx','webmotors')
       and (contact_info is null or contact_info = '' or price is null)
-    order by id desc
+    ${orderClause}
     limit $1;
   `,
     [batchSize]
   );
 
-  console.log(`Processando ${rows.length} anúncios...`);
+  console.log(`Processando ${rows.length} anuncios (prioridade=${priority})...`);
 
   for (const row of rows) {
-    let result;
     try {
-      result = await scrapeSingle(row.url, headless, timeoutMs);
+      const result = await scrapeSingle(row.url, headless, timeoutMs);
       console.log(`ID ${row.id} =>`, result);
 
       await client.query(
@@ -101,7 +105,9 @@ async function scrapeSingle(url: string, headless: boolean, timeoutMs: number) {
     const html = await page.content();
     phone =
       BaseScraper.extractPhoneNumbers(html) ||
-      BaseScraper.extractPhoneNumbers(await page.locator('a[href^="tel:"]').first().getAttribute("href").catch(() => "") || "");
+      BaseScraper.extractPhoneNumbers(
+        (await page.locator('a[href^="tel:"]').first().getAttribute("href").catch(() => "")) || ""
+      );
     priceText =
       (await page.locator("[data-testid='ad-price']").first().textContent().catch(() => "")) ||
       (await page.locator("span:has-text('R$')").first().textContent().catch(() => "")) ||
@@ -120,7 +126,9 @@ async function scrapeSingle(url: string, headless: boolean, timeoutMs: number) {
     const html = await page.content();
     phone =
       BaseScraper.extractPhoneNumbers(html) ||
-      BaseScraper.extractPhoneNumbers(await page.locator('a[href^="tel:"]').first().getAttribute("href").catch(() => "") || "");
+      BaseScraper.extractPhoneNumbers(
+        (await page.locator('a[href^="tel:"]').first().getAttribute("href").catch(() => "")) || ""
+      );
     priceText =
       (await page.locator('[data-testid="vehicle-info-price"]').first().textContent().catch(() => "")) ||
       (await page.locator('[data-testid*="price"]').first().textContent().catch(() => "")) ||

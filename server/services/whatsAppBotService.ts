@@ -8,7 +8,7 @@ import { leads, vehicleAds } from "../../drizzle/schema";
 export type BotStatus = "disconnected" | "connecting" | "qr_ready" | "ready" | "failed";
 
 export class WhatsAppBotService {
-    private client: Client;
+    private client: InstanceType<typeof Client>;
     private status: BotStatus = "disconnected";
     private qrCode: string | null = null;
     private lastError: string | null = null;
@@ -28,7 +28,7 @@ export class WhatsAppBotService {
     }
 
     private setupEventListeners() {
-        this.client.on("qr", async (qr) => {
+        this.client.on("qr", async (qr: string) => {
             console.log("[WhatsAppBot] QR Code received");
             this.status = "qr_ready";
             try {
@@ -48,19 +48,19 @@ export class WhatsAppBotService {
             console.log("[WhatsAppBot] Authenticated");
         });
 
-        this.client.on("auth_failure", (msg) => {
+        this.client.on("auth_failure", (msg: string) => {
             console.error("[WhatsAppBot] Auth failure", msg);
             this.status = "failed";
             this.lastError = msg;
         });
 
-        this.client.on("disconnected", (reason) => {
+        this.client.on("disconnected", (reason: string) => {
             console.log("[WhatsAppBot] Disconnected:", reason);
             this.status = "disconnected";
             this.qrCode = null;
         });
 
-        this.client.on("message", async (msg) => {
+        this.client.on("message", async (msg: any) => {
             // Logic to detect if a seller is replying to our lead message
             await this.handleIncomingMessage(msg);
         });

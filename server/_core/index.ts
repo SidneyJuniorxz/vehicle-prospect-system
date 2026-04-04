@@ -10,7 +10,7 @@ import { serveStatic, setupVite } from "./vite";
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const server = net.createServer();
-    server.listen(port, () => {
+    server.listen({ port, host: "0.0.0.0", exclusive: true }, () => {
       server.close(() => resolve(true));
     });
     server.on("error", () => resolve(false));

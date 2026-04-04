@@ -15,7 +15,9 @@ import { useLocation } from "wouter";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useEffect, useRef } from "react";
-import { Input } from "@/components/ui/input";
+
+type SellerTypeFilter = "" | "individual" | "dealer" | "reseller" | "unknown";
+type PostprocessPriority = "low" | "normal" | "high";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -50,11 +52,16 @@ export default function Dashboard() {
   const [filterBrand, setFilterBrand] = useState("");
   const [filterModel, setFilterModel] = useState("");
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
-  const [filterSellerType, setFilterSellerType] = useState("");
+  const [filterSellerType, setFilterSellerType] = useState<SellerTypeFilter>("");
   const [autoPostprocess, setAutoPostprocess] = useState(true);
   const autoRunRef = useRef(false);
   const [postBatchSize, setPostBatchSize] = useState(2);
   const [postTimeout, setPostTimeout] = useState(90000);
+  const [postPriority, setPostPriority] = useState<PostprocessPriority>("normal");
+  const [lastGain, setLastGain] = useState<{ price: number; contact: number } | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [postprocessEvents, setPostprocessEvents] = useState<string[]>([]);
+  const prevCompletenessRef = useRef<{ pricePct: number; contactPct: number; at: number } | null>(null);
 
   const leadsQuery = trpc.leads.list.useQuery({
     priority,
@@ -177,24 +184,93 @@ export default function Dashboard() {
     setSearchParams(prev => ({ ...prev, [field]: value }));
   };
 
+  useEffect(() => {
+    if (postPriority === "high") {
+      setPostBatchSize(4);
+      setPostTimeout(120000);
+    } else if (postPriority === "low") {
+      setPostBatchSize(1);
+      setPostTimeout(60000);
+    } else {
+      setPostBatchSize(2);
+      setPostTimeout(90000);
+    }
+  }, [postPriority]);
+
+  useEffect(() => {
+    const pricePct = dashboardMetrics.data?.completeness.pricePct ?? 0;
+    const contactPct = dashboardMetrics.data?.completeness.contactPct ?? 0;
+    const now = Date.now();
+    const prev = prevCompletenessRef.current;
+
+    if (prev) {
+      const deltaPrice = pricePct - prev.pricePct;
+      const deltaContact = contactPct - prev.contactPct;
+      if (deltaPrice !== 0 || deltaContact !== 0) {
+        setLastGain({ price: deltaPrice, contact: deltaContact });
+      }
+
+      const prevCombined = (prev.pricePct + prev.contactPct) / 2;
+      const nowCombined = (pricePct + contactPct) / 2;
+      const deltaCombined = nowCombined - prevCombined;
+      const elapsedMin = Math.max((now - prev.at) / 60000, 0.1);
+      const ratePerMinute = deltaCombined / elapsedMin;
+
+      if (ratePerMinute > 0 && nowCombined < 95) {
+        setEtaMinutes(Math.max((95 - nowCombined) / ratePerMinute, 0));
+      } else if (nowCombined >= 95) {
+        setEtaMinutes(0);
+      } else {
+        setEtaMinutes(null);
+      }
+    }
+
+    prevCompletenessRef.current = { pricePct, contactPct, at: now };
+  }, [dashboardMetrics.data?.completeness.pricePct, dashboardMetrics.data?.completeness.contactPct]);
+
   // Auto-run postprocess until completeness >=95% if toggle is on
   useEffect(() => {
     const pricePct = dashboardMetrics.data?.completeness.pricePct ?? 0;
     const contactPct = dashboardMetrics.data?.completeness.contactPct ?? 0;
     const needsRun = autoPostprocess && (pricePct < 95 || contactPct < 95);
-    if (needsRun && !runPostprocess.isLoading && !autoRunRef.current) {
+    if (needsRun && !runPostprocess.isPending && !autoRunRef.current) {
+      const beforePrice = pricePct;
+      const beforeContact = contactPct;
+      const startedAt = Date.now();
       autoRunRef.current = true;
+      setPostprocessEvents((prev) => [
+        `[${new Date().toLocaleTimeString()}] Iniciando lote (prioridade=${postPriority}, batch=${postBatchSize})`,
+        ...prev,
+      ].slice(0, 6));
       runPostprocess.mutate(
-        { batchSize: postBatchSize, timeoutMs: postTimeout },
+        { batchSize: postBatchSize, timeoutMs: postTimeout, priority: postPriority },
         {
           onSettled: () => {
             autoRunRef.current = false;
-            dashboardMetrics.refetch();
+            dashboardMetrics.refetch().then((res) => {
+              const afterPrice = res.data?.completeness.pricePct ?? beforePrice;
+              const afterContact = res.data?.completeness.contactPct ?? beforeContact;
+              const dPrice = afterPrice - beforePrice;
+              const dContact = afterContact - beforeContact;
+              const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+              setPostprocessEvents((prev) => [
+                `[${new Date().toLocaleTimeString()}] Lote finalizado em ${elapsedSec}s (preco ${dPrice >= 0 ? "+" : ""}${dPrice}pp, contato ${dContact >= 0 ? "+" : ""}${dContact}pp)`,
+                ...prev,
+              ].slice(0, 6));
+            });
           },
         }
       );
     }
-  }, [dashboardMetrics.data?.completeness, autoPostprocess, runPostprocess, dashboardMetrics]);
+  }, [
+    dashboardMetrics.data?.completeness,
+    autoPostprocess,
+    runPostprocess,
+    dashboardMetrics,
+    postBatchSize,
+    postTimeout,
+    postPriority,
+  ]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -223,6 +299,13 @@ export default function Dashboard() {
         return "bg-gray-100 text-gray-800";
     }
   };
+
+  const pricePct = dashboardMetrics.data?.completeness.pricePct ?? 0;
+  const contactPct = dashboardMetrics.data?.completeness.contactPct ?? 0;
+  const combinedPct = Math.round((pricePct + contactPct) / 2);
+  const isPostprocessing = runPostprocess.isPending || autoRunRef.current;
+  const etaText =
+    etaMinutes === null ? "Sem previsao" : etaMinutes <= 1 ? "Menos de 1 min" : `${Math.ceil(etaMinutes)} min`;
 
   return (
     <DashboardLayout>
@@ -277,8 +360,8 @@ export default function Dashboard() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">Todos</SelectItem>
-                          <SelectItem value="particular">Particular</SelectItem>
-                          <SelectItem value="profissional">Profissional</SelectItem>
+                          <SelectItem value="individual">Particular</SelectItem>
+                          <SelectItem value="dealer">Loja/Profissional</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -518,14 +601,14 @@ export default function Dashboard() {
               </Select>
             </div>
             <div className="flex-1">
-              <Select value={filterSellerType || "all"} onValueChange={(v) => setFilterSellerType(v === "all" ? "" : v)}>
+              <Select value={filterSellerType || "all"} onValueChange={(v) => setFilterSellerType(v === "all" ? "" : (v as SellerTypeFilter))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Tipo de anunciante" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="particular">Particular</SelectItem>
-                  <SelectItem value="profissional">Profissional</SelectItem>
+                  <SelectItem value="individual">Particular</SelectItem>
+                  <SelectItem value="dealer">Loja/Profissional</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -559,6 +642,7 @@ export default function Dashboard() {
               <Button variant="ghost" size="sm" onClick={() => {
                 setFilterBrand("");
                 setFilterModel("");
+                setFilterSellerType("");
                 setPriority(undefined);
                 setStatus(undefined);
               }}>
@@ -590,12 +674,29 @@ export default function Dashboard() {
             <CardTitle>Completude (dados reais)</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Progresso geral para 95%</span>
+                <span className="font-semibold">{combinedPct}%</span>
+              </div>
+              <Progress value={combinedPct} className="h-2" />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{isPostprocessing ? "Pos-processamento em execucao" : "Aguardando proximo ciclo"}</span>
+                <span>ETA 95%: {etaText}</span>
+              </div>
+              {lastGain && (
+                <p className="text-xs text-muted-foreground">
+                  Ultimo ganho: preco {lastGain.price >= 0 ? "+" : ""}{lastGain.price}pp, contato {lastGain.contact >= 0 ? "+" : ""}{lastGain.contact}pp
+                </p>
+              )}
+            </div>
+
             <div className="flex items-center gap-4">
-              <Donut value={dashboardMetrics.data?.completeness.pricePct ?? 0} label="Preço" />
-              <Donut value={dashboardMetrics.data?.completeness.contactPct ?? 0} label="Contato" color="#16a34a" />
+              <Donut value={pricePct} label="Preco" />
+              <Donut value={contactPct} label="Contato" color="#16a34a" />
               <div className="flex flex-col gap-2 text-xs w-full">
                 <div className="flex justify-between">
-                  <span>Batch pós-processo</span>
+                  <span>Batch pos-processo</span>
                   <Input
                     className="h-8 w-16"
                     type="number"
@@ -616,13 +717,34 @@ export default function Dashboard() {
                     onChange={(e) => setPostTimeout(parseInt(e.target.value || "90000", 10))}
                   />
                 </div>
+                <div className="flex justify-between items-center">
+                  <span>Prioridade do pos-processo</span>
+                  <Select value={postPriority} onValueChange={(v) => setPostPriority(v as PostprocessPriority)}>
+                    <SelectTrigger className="h-8 w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="high">Alta</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="low">Baixa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex items-center gap-2">
-                  <Switch id="auto-postprocess" checked={autoPostprocess} onCheckedChange={setAutoPostprocess} />
-                  <label htmlFor="auto-postprocess">Rodar pós-processo até 95%</label>
+                  <Switch id="auto-postprocess-card" checked={autoPostprocess} onCheckedChange={setAutoPostprocess} />
+                  <label htmlFor="auto-postprocess-card">Rodar pos-processo ate 95%</label>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Alvo mínimo: 95%. Pós-processamento roda em segundo plano enquanto abaixo do alvo.
+                  Alvo minimo: 95%. Pos-processamento roda em segundo plano enquanto abaixo do alvo.
                 </p>
+                {postprocessEvents.length > 0 && (
+                  <div className="rounded-md border p-2 bg-muted/40">
+                    <p className="text-[11px] font-medium mb-1">Ultimos ciclos</p>
+                    {postprocessEvents.map((event) => (
+                      <p key={event} className="text-[11px] text-muted-foreground">{event}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -754,3 +876,4 @@ function Donut({ value, label, color = "#2563eb" }: { value: number; label: stri
     </div>
   );
 }
+

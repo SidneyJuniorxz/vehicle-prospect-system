@@ -105,6 +105,7 @@ export const appRouter = router({
           status: z.string().optional(),
           brand: z.string().optional(),
           model: z.string().optional(),
+          sellerType: z.enum(["individual", "dealer", "reseller", "unknown"]).optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
@@ -118,6 +119,7 @@ export const appRouter = router({
         if (input.status) conditions.push(eq(leads.status, input.status as any));
         if (input.brand) conditions.push(ilike(vehicleAds.brand, `%${input.brand}%`));
         if (input.model) conditions.push(ilike(vehicleAds.model, `%${input.model}%`));
+        if (input.sellerType) conditions.push(eq(vehicleAds.sellerType, input.sellerType));
 
         const query = db
           .select({
