@@ -60,6 +60,7 @@ export default function Dashboard() {
     brand: filterBrand || undefined,
     model: filterModel || undefined,
   });
+  const dashboardMetrics = trpc.dashboard.metrics.useQuery(undefined, { refetchInterval: 30000 });
 
   const filterOptionsQuery = trpc.leads.getFilterOptions.useQuery();
 
@@ -396,7 +397,12 @@ export default function Dashboard() {
               <CardTitle className="text-sm font-medium">Total de Prospecções</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{statsQuery.data?.total || 0}</div>
+              <div className="text-2xl font-bold">
+                {dashboardMetrics.data?.totals.totalProspects ?? statsQuery.data?.total ?? 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Novos 24h: {dashboardMetrics.data?.totals.new24h ?? 0}
+              </p>
             </CardContent>
           </Card>
 
@@ -406,7 +412,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {statsQuery.data?.high || 0}
+                {dashboardMetrics.data?.leads.high ?? statsQuery.data?.high ?? 0}
               </div>
             </CardContent>
           </Card>
@@ -417,7 +423,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {statsQuery.data?.medium || 0}
+                {dashboardMetrics.data?.leads.medium ?? statsQuery.data?.medium ?? 0}
               </div>
             </CardContent>
           </Card>
@@ -428,7 +434,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {statsQuery.data?.new || 0}
+                {dashboardMetrics.data?.totals.new24h ?? statsQuery.data?.new ?? 0}
               </div>
             </CardContent>
           </Card>
