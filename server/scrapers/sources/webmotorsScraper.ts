@@ -66,11 +66,18 @@ export class WebmotorsScraper extends BaseScraper {
 
           // Try to find and click the contact button on Webmotors
           const btnRegex = /(Ver telefone|Telefone|WhatsApp|Mensagem|Mostrar telefone)/i;
-          const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
-            || await page.getByText(btnRegex).first().catch(() => null);
-
-          if (button) {
-            await button.click().catch((e: any) => console.log('Button click err:', e.message));
+          let clicked = false;
+          try {
+            await page.getByRole('button', { name: btnRegex }).first().click({ timeout: 3000 });
+            clicked = true;
+          } catch {}
+          if (!clicked) {
+            try {
+              await page.getByText(btnRegex).first().click({ timeout: 3000 });
+              clicked = true;
+            } catch {}
+          }
+          if (clicked) {
             await this.humanLikeDelay(2000, 4000); // Wait for number/modal to reveal
           }
 

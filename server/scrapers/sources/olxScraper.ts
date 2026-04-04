@@ -67,11 +67,18 @@ export class OlxScraper extends BaseScraper {
 
           // Try to find and click the contact button
           const btnRegex = /(Ver n.meros|Ver os n.meros|Ver telefone|Mostrar telefone|Contato|Falar com vendedor)/i;
-          const button = await page.getByRole('button', { name: btnRegex }).first().catch(() => null)
-            || await page.getByText(btnRegex).first().catch(() => null);
-
-          if (button) {
-            await button.click().catch((e: any) => console.log('Button click err:', e.message));
+          let clicked = false;
+          try {
+            await page.getByRole('button', { name: btnRegex }).first().click({ timeout: 3000 });
+            clicked = true;
+          } catch {}
+          if (!clicked) {
+            try {
+              await page.getByText(btnRegex).first().click({ timeout: 3000 });
+              clicked = true;
+            } catch {}
+          }
+          if (clicked) {
             await this.humanLikeDelay(2000, 4000); // Wait for the number to reveal
           }
 
