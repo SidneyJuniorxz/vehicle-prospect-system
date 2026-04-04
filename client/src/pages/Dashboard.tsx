@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useEffect, useRef } from "react";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -49,6 +50,8 @@ export default function Dashboard() {
   const [filterModel, setFilterModel] = useState("");
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [filterSellerType, setFilterSellerType] = useState("");
+  const [autoPostprocess, setAutoPostprocess] = useState(true);
+  const autoRunRef = useRef(false);
 
   const leadsQuery = trpc.leads.list.useQuery({
     priority,
@@ -64,6 +67,10 @@ export default function Dashboard() {
     model: filterModel || undefined,
   });
   const dashboardMetrics = trpc.dashboard.metrics.useQuery(undefined, { refetchInterval: 30000 });
+  const runPostprocess = trpc.dashboard.runPostprocessBatch.useMutation({
+    onError: (err) => toast.error(`Pós-processamento falhou: ${err.message}`),
+    onSuccess: () => toast.success("Pós-processamento em lote iniciado"),
+  });
 
   const filterOptionsQuery = trpc.leads.getFilterOptions.useQuery();
 
@@ -166,6 +173,25 @@ export default function Dashboard() {
   const handleParamChange = (field: string, value: string | boolean) => {
     setSearchParams(prev => ({ ...prev, [field]: value }));
   };
+
+  // Auto-run postprocess until completeness >=95% if toggle is on
+  useEffect(() => {
+    const pricePct = dashboardMetrics.data?.completeness.pricePct ?? 0;
+    const contactPct = dashboardMetrics.data?.completeness.contactPct ?? 0;
+    const needsRun = autoPostprocess && (pricePct < 95 || contactPct < 95);
+    if (needsRun && !runPostprocess.isLoading && !autoRunRef.current) {
+      autoRunRef.current = true;
+      runPostprocess.mutate(
+        { batchSize: 2, timeoutMs: 90000 },
+        {
+          onSettled: () => {
+            autoRunRef.current = false;
+            dashboardMetrics.refetch();
+          },
+        }
+      );
+    }
+  }, [dashboardMetrics.data?.completeness, autoPostprocess, runPostprocess, dashboardMetrics]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -544,11 +570,15 @@ export default function Dashboard() {
             >
               {isExporting ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4 mr-2" />
-              )}
-              Exportar
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            Exportar
             </Button>
+          <div className="flex items-center gap-2">
+            <Switch id="auto-postprocess" checked={autoPostprocess} onCheckedChange={setAutoPostprocess} />
+            <label htmlFor="auto-postprocess" className="text-sm">Rodar pós-processamento até 95%</label>
+          </div>
           </CardContent>
         </Card>
 
