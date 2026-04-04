@@ -126,8 +126,18 @@ async function scrapeSingle(url: string, headless: boolean, timeoutMs: number) {
 
   return {
     contactInfo: phone,
-    price: priceText ? BaseScraper.prototype.extractPrice(priceText) : undefined,
+    price: priceText ? extractPrice(priceText) : undefined,
   };
+}
+
+function extractPrice(priceText: string): number | undefined {
+  const match = priceText.match(/[\d.]+(?:,\d+)?/);
+  if (match) {
+    const p = match[0].replace(/\./g, "").replace(",", ".");
+    const num = parseFloat(p);
+    return !isNaN(num) ? num : undefined;
+  }
+  return undefined;
 }
 
 run().catch((err) => {
