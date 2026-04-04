@@ -29,11 +29,21 @@ async function main() {
   const directUrl = process.env.URL; // opcional: deep scrape direto em uma URL
   const sellerType = process.env.SELLER_TYPE; // opcional: "individual" | "dealer" | "reseller"
   const timeoutMs = envInt("TIMEOUT_MS", 60000);
+  const state = process.env.STATE || "SP";
+  const city = process.env.CITY || undefined;
+  const brand = process.env.BRAND || undefined;
+  const model = process.env.MODEL || undefined;
+  const minYearEnv = envInt("MIN_YEAR", 2015);
+  const maxYearEnv = envInt("MAX_YEAR", 2022);
+  const maxKmEnv = envInt("MAX_KM", 0); // 0 = sem limite
 
   const criteria: Criteria = {
-    state: "SP",
-    minYear: 2015,
-    maxYear: 2022,
+    state,
+    city,
+    brand,
+    model,
+    minYear: minYearEnv,
+    maxYear: maxYearEnv,
     minPrice: 30000,
     maxPrice: 120000,
     deepScrape: deep,
