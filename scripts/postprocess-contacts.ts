@@ -40,19 +40,24 @@ async function run() {
   console.log(`Processando ${rows.length} anúncios...`);
 
   for (const row of rows) {
-    const result = await scrapeSingle(row.url, headless, timeoutMs);
-    console.log(`ID ${row.id} =>`, result);
+    let result;
+    try {
+      result = await scrapeSingle(row.url, headless, timeoutMs);
+      console.log(`ID ${row.id} =>`, result);
 
-    await client.query(
-      `
+      await client.query(
+        `
       update vehicle_ads
       set contact_info = coalesce($1, contact_info),
           price = coalesce($2, price),
           updated_at = now()
       where id = $3;
     `,
-      [result.contactInfo, result.price, row.id]
-    );
+        [result.contactInfo, result.price, row.id]
+      );
+    } catch (e: any) {
+      console.error(`ID ${row.id} (${row.url}) falhou: ${e?.message || e}`);
+    }
   }
 
   await client.end();
