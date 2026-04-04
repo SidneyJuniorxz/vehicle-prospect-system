@@ -25,9 +25,11 @@ import { leads, vehicleAds, notifications, collectionJobs } from "../drizzle/sch
 import { monitoringRouter } from "./routers/monitoringRouter";
 import { exportRouter } from "./routers/exportRouter";
 import { whatsappRouter } from "./routers/whatsappRouter";
+import { dashboardRouter } from "./routers/dashboardRouter";
 
 export const appRouter = router({
   system: systemRouter,
+  dashboard: dashboardRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
